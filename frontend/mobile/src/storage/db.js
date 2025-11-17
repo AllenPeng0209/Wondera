@@ -124,7 +124,8 @@ export async function initDatabase() {
       pin_chat INTEGER DEFAULT 0,
       voice_preset TEXT,
       memory_limit INTEGER DEFAULT 10,
-      auto_summary INTEGER DEFAULT 1
+      auto_summary INTEGER DEFAULT 1,
+      is_blocked INTEGER DEFAULT 0
     );`);
 
   await ensureColumn('role_settings', 'nickname_override', 'TEXT');
@@ -134,6 +135,7 @@ export async function initDatabase() {
   await ensureColumn('role_settings', 'voice_preset', 'TEXT');
   await ensureColumn('role_settings', 'memory_limit', 'INTEGER DEFAULT 10');
   await ensureColumn('role_settings', 'auto_summary', 'INTEGER DEFAULT 1');
+  await ensureColumn('role_settings', 'is_blocked', 'INTEGER DEFAULT 0');
 
   await seedInitialData();
 }
@@ -185,8 +187,8 @@ async function seedInitialData() {
     await run(
       `INSERT OR IGNORE INTO role_settings (
         role_id, allow_emoji, allow_knock, max_replies, persona_note, expression_style, catchphrase,
-        user_personality, nickname_override, gender, chat_background, pin_chat, voice_preset, memory_limit, auto_summary
-      ) VALUES (?, 1, 1, 5, ?, ?, ?, ?, ?, ?, ?, 0, ?, 10, 1);`,
+        user_personality, nickname_override, gender, chat_background, pin_chat, voice_preset, memory_limit, auto_summary, is_blocked
+      ) VALUES (?, 1, 1, 5, ?, ?, ?, ?, ?, ?, ?, 0, ?, 10, 1, 0);`,
       [role.id, '', '', '', '', '', '', role.name, '保密', '#ffeef2', '默认']
     );
 

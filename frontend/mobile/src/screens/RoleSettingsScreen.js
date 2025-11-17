@@ -35,6 +35,7 @@ export default function RoleSettingsScreen({ navigation, route }) {
         voicePreset: data.voice_preset || '未设置',
         memoryLimit: data.memory_limit || 10,
         autoSummary: Boolean(data.auto_summary),
+        isBlocked: Boolean(data.is_blocked),
         allowEmoji: Boolean(data.allow_emoji),
         allowKnock: Boolean(data.allow_knock),
         maxReplies: data.max_replies || 5,
@@ -58,6 +59,7 @@ export default function RoleSettingsScreen({ navigation, route }) {
       voice_preset: settings.voicePreset,
       memory_limit: settings.memoryLimit,
       auto_summary: settings.autoSummary ? 1 : 0,
+      is_blocked: settings.isBlocked ? 1 : 0,
       allow_emoji: settings.allowEmoji ? 1 : 0,
       allow_knock: settings.allowKnock ? 1 : 0,
       max_replies: settings.maxReplies,
@@ -222,6 +224,14 @@ export default function RoleSettingsScreen({ navigation, route }) {
 
         <TouchableOpacity style={styles.clearButton} onPress={handleClear}>
           <Text style={styles.clearButtonText}>清空聊天记录</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.blockButton, settings.isBlocked && styles.blockButtonActive]}
+          onPress={() => setSettings((prev) => ({ ...prev, isBlocked: !prev.isBlocked }))}
+        >
+          <Text style={[styles.blockButtonText, settings.isBlocked && styles.blockButtonTextActive]}>
+            {settings.isBlocked ? '解除拉黑' : '拉黑 Ta'}
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.reportButton} onPress={handleReport}>
           <Text style={styles.reportButtonText}>举报</Text>
@@ -544,6 +554,23 @@ const styles = StyleSheet.create({
   clearButtonText: {
     color: '#fff',
     fontWeight: '600',
+  },
+  blockButton: {
+    paddingVertical: 14,
+    borderRadius: 20,
+    backgroundColor: '#ffecef',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  blockButtonActive: {
+    backgroundColor: '#ffd1d8',
+  },
+  blockButtonText: {
+    color: '#f093a4',
+    fontWeight: '600',
+  },
+  blockButtonTextActive: {
+    color: '#b5495a',
   },
   reportButton: {
     paddingVertical: 14,

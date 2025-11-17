@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -12,8 +13,9 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addMessage, getConversationDetail, getMessages } from '../storage/db';
+import { addMessage, getConversationDetail, getMessages, getRoleSettings } from '../storage/db';
 import { generateAiReply } from '../services/ai';
 
 export default function ConversationScreen({ navigation, route }) {
@@ -25,6 +27,7 @@ export default function ConversationScreen({ navigation, route }) {
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [roleConfig, setRoleConfig] = useState(null);
   const listRef = useRef(null);
   const messagesRef = useRef([]);
 
@@ -45,6 +48,8 @@ export default function ConversationScreen({ navigation, route }) {
     loadData();
   }, [conversationId]);
 
+
+
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
@@ -53,8 +58,44 @@ export default function ConversationScreen({ navigation, route }) {
     }
   }, [messages]);
 
+  const deliverAiChunks = useCallback(
+    (text) => {
+      if (!conversation) return Promise.resolve();
+      const normalized = (text || '').replace(/\r/g, '').trim();
+      if (!normalized) return Promise.resolve();
+      const chunkMatches = normalized.match(/[^。！？!\?…\n]+[。！？!\?…]?/g) || [normalized];
+      const chunks = chunkMatches.map((chunk) => chunk.trim()).filter(Boolean);
+      if (!chunks.length) return Promise.resolve();
+
+      return new Promise((resolve) => {
+        const deliver = async (index) => {
+          const chunk = chunks[index];
+          const msg = await addMessage(conversation.id, 'ai', chunk, Date.now());
+          const updatedHistory = [...messagesRef.current, msg];
+          setMessages(updatedHistory);
+          messagesRef.current = updatedHistory;
+
+          if (index >= chunks.length - 1) {
+            resolve();
+            return;
+          }
+          const delay = 700 + Math.random() * 600;
+          setTimeout(() => {
+            deliver(index + 1);
+          }, delay);
+        };
+        deliver(0);
+      });
+    },
+    [conversation, roleConfig]
+  );
+
   const handleSend = async () => {
     if (!inputValue.trim() || !conversation || !role) return;
+    if (roleConfig?.is_blocked) {
+      Alert.alert('已拉黑', '你已拉黑 Ta，无法继续对话。');
+      return;
+    }
     const content = inputValue.trim();
     setInputValue('');
     const createdAt = Date.now();
@@ -70,10 +111,7 @@ export default function ConversationScreen({ navigation, route }) {
         role,
         history: nextHistory,
       });
-      const aiMessage = await addMessage(conversation.id, 'ai', aiResult.text, Date.now());
-      const updatedHistory = [...messagesRef.current, aiMessage];
-      setMessages(updatedHistory);
-      messagesRef.current = updatedHistory;
+      await deliverAiChunks(aiResult.text);
       if (typeof aiResult.nextCursor === 'number') {
         setConversation((prev) =>
           prev ? { ...prev, scriptCursor: aiResult.nextCursor } : prev
@@ -121,25 +159,36 @@ export default function ConversationScreen({ navigation, route }) {
   const topPadding = Math.max(insets.top - 8, 8);
   return (
     <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}> 
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={22} color="#333" />
-          </TouchableOpacity>
-          <Image source={{ uri: role.avatar }} style={styles.headerAvatar} />
-          <View style={styles.headerInfo}>
-            <Text style={styles.headerName}>{role.name}</Text>
-            <View style={styles.moodPill}>
-              <Ionicons name="leaf-outline" color="#f093a4" size={12} />
-              <Text style={styles.moodText}>{role.mood || '想你'}</Text>
-            </View>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={22} color="#333" />
+        </TouchableOpacity>
+        <Image source={{ uri: role.avatar }} style={styles.headerAvatar} />
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerName}>{role.name}</Text>
+          <View style={styles.moodPill}>
+            <Ionicons name="leaf-outline" color="#f093a4" size={12} />
+            <Text style={styles.moodText}>{role.mood || '想你'}</Text>
           </View>
+        </View>
         <TouchableOpacity
           style={styles.settingsButton}
-          onPress={() => navigation.navigate('RoleSettings', { roleId: role.id, conversationId: conversation.id })}
+          onPress={() =>
+            navigation.navigate('RoleSettings', {
+              roleId: role.id,
+              conversationId: conversation.id,
+            })
+          }
         >
           <Ionicons name="settings-outline" size={18} color="#f093a4" />
         </TouchableOpacity>
+      </View>
+      {roleConfig?.is_blocked && (
+        <View style={styles.blockBanner}>
+          <Ionicons name="alert-circle-outline" size={16} color="#f093a4" />
+          <Text style={styles.blockBannerText}>你已拉黑 Ta，解除后方可继续聊天</Text>
         </View>
+      )}
 
       <KeyboardAvoidingView
         style={styles.chatArea}
@@ -348,5 +397,19 @@ const styles = StyleSheet.create({
     borderColor: '#f1d7de',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  blockBanner: {
+    backgroundColor: '#ffeef4',
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  blockBannerText: {
+    marginLeft: 6,
+    color: '#f093a4',
+    fontSize: 12,
   },
 });
