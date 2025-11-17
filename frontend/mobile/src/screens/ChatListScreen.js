@@ -1,0 +1,197 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getConversations } from '../storage/db';
+
+const Tabs = [
+  { id: 'messages', label: '消息', icon: 'chatbubble-ellipses-outline', active: true },
+  { id: 'moments', label: '发现', icon: 'heart-outline' },
+  { id: 'profile', label: '我的', icon: 'person-circle-outline' },
+];
+
+export default function ChatListScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
+  const [conversations, setConversations] = useState([]);
+
+  const loadConversations = useCallback(async () => {
+    const data = await getConversations();
+    setConversations(data);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadConversations();
+    }, [loadConversations])
+  );
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  const renderConversation = ({ item }) => (
+    <TouchableOpacity
+      style={styles.chatRow}
+      onPress={() => navigation.navigate('Conversation', { conversationId: item.id })}
+      activeOpacity={0.8}
+    >
+      <View style={styles.avatarWrapper}>
+        <Image source={{ uri: item.avatar }} style={styles.avatar} />
+        <View style={[styles.onlineDot, { opacity: 0.6 }]} />
+      </View>
+      <View style={styles.chatBody}>
+        <View style={styles.chatHeader}>
+          <Text style={styles.chatName}>{item.name}</Text>
+          <Text style={styles.chatTime}>{formatTime(item.updatedAt)}</Text>
+        </View>
+        <Text style={styles.chatSnippet} numberOfLines={1}>
+          {item.lastMessage || item.greeting}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const topPadding = Math.max(insets.top - 8, 8);
+  return (
+    <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}> 
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>消息</Text>
+        <TouchableOpacity style={styles.headerButton} activeOpacity={0.7}>
+          <Feather name="plus" size={20} color="#8f8f8f" />
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        data={conversations}
+        keyExtractor={(item) => item.id}
+        renderItem={renderConversation}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+      />
+
+      <View style={styles.tabBar}>
+        {Tabs.map((tab) => (
+          <TouchableOpacity key={tab.id} style={styles.tabItem} activeOpacity={0.9}>
+            <Ionicons
+              name={tab.icon}
+              size={24}
+              color={tab.active ? '#f093a4' : '#a2a2a2'}
+            />
+            <Text style={[styles.tabLabel, tab.active && styles.tabLabelActive]}>{tab.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function formatTime(timestamp) {
+  if (!timestamp) return '--';
+  const date = new Date(timestamp);
+  const hours = `${date.getHours()}`.padStart(2, '0');
+  const minutes = `${date.getMinutes()}`.padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fdfdfd',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#404040',
+  },
+  headerButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ececec',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listContent: {
+    paddingBottom: 120,
+  },
+  chatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: '#f0f0f0',
+  },
+  avatarWrapper: {
+    marginRight: 12,
+  },
+  avatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+  },
+  onlineDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#7ed321',
+    borderWidth: 2,
+    borderColor: '#fdfdfd',
+  },
+  chatBody: {
+    flex: 1,
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  chatName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#3f3f3f',
+  },
+  chatTime: {
+    fontSize: 12,
+    color: '#b0b0b0',
+  },
+  chatSnippet: {
+    fontSize: 13,
+    color: '#8c8c8c',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: '#f0f0f0',
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabLabel: {
+    fontSize: 12,
+    marginTop: 4,
+    color: '#a2a2a2',
+  },
+  tabLabelActive: {
+    color: '#f093a4',
+    fontWeight: '600',
+  },
+});
