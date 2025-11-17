@@ -1,5 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Image,
   PanResponder,
@@ -11,50 +12,31 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const heroCards = [
-  {
-    id: 'hero-1',
-    name: '陆沉',
-    title: '温柔系建筑师',
-    age: 27,
-    city: '上海',
-    description: '“慢慢喜欢你，直到愿意把每一次日出都讲给你听。”',
-    interests: ['晨跑', '建筑模型', '慢热告白'],
-    image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'hero-2',
-    name: '季如晏',
-    title: '占星师 & 心理咨询师',
-    age: 26,
-    city: '成都',
-    description: '“你不说话我也懂，星星会告诉我你在想什么。”',
-    interests: ['星盘', '茶饮', '梦境记录'],
-    image: 'https://images.unsplash.com/photo-1528763380143-65b3ac35c4fd?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 'hero-3',
-    name: '沈归',
-    title: '摇滚主唱',
-    age: 25,
-    city: '北京',
-    description: '“我为你写了一首歌，它只会在你出现的时候播放。”',
-    interests: ['黑胶收藏', '深夜排练', '甜言蜜语'],
-    image: 'https://images.unsplash.com/photo-1504593811423-6dd665756598?auto=format&fit=crop&w=900&q=80',
-  },
-];
+import { getRoles, getLikedRolesCount, saveRolePreference } from '../storage/db';
 
 const SWIPE_THRESHOLD = 120;
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
+  const [cards, setCards] = useState([]);
   const [cardIndex, setCardIndex] = useState(0);
-  const [likedList, setLikedList] = useState([]);
+  const [likedCount, setLikedCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const position = useRef(new Animated.ValueXY()).current;
 
-  const currentCard = heroCards[cardIndex % heroCards.length];
-  const nextCard = heroCards[(cardIndex + 1) % heroCards.length];
+  const currentCard = cards.length ? cards[cardIndex % cards.length] : null;
+  const nextCard = cards.length ? cards[(cardIndex + 1) % cards.length] : null;
+
+  useEffect(() => {
+    async function load() {
+      const data = await getRoles();
+      setCards(data);
+      const count = await getLikedRolesCount();
+      setLikedCount(count);
+      setLoading(false);
+    }
+    load();
+  }, []);
 
   const panResponder = useMemo(
     () =>
@@ -80,13 +62,15 @@ export default function DiscoverScreen() {
   );
 
   const handleSwipe = (type) => {
+    if (!currentCard) return;
     Animated.timing(position, {
       toValue: { x: type === 'like' ? 400 : -400, y: 50 },
       duration: 200,
       useNativeDriver: true,
     }).start(() => {
       if (type === 'like') {
-        setLikedList((prev) => [...prev, currentCard]);
+        saveRolePreference(currentCard.id, true);
+        setLikedCount((prev) => prev + 1);
       }
       position.setValue({ x: 0, y: 0 });
       setCardIndex((prev) => prev + 1);
@@ -105,6 +89,26 @@ export default function DiscoverScreen() {
     ],
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}> 
+        <ActivityIndicator color="#f093a4" />
+      </SafeAreaView>
+    );
+  }
+
+  if (!currentCard) {
+    return (
+      <SafeAreaView style={[styles.container, { paddingTop: Math.max(insets.top - 8, 8) }]}> 
+        <View style={styles.emptyState}>
+          <Ionicons name="cloud-offline-outline" size={52} color="#f093a4" />
+          <Text style={styles.emptyTitle}>暂时没有更多推荐</Text>
+          <Text style={styles.emptySubtitle}>稍后再来，新的心动角色正在登场。</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.container, { paddingTop: Math.max(insets.top - 8, 8) }]}> 
       <View style={styles.header}>
@@ -114,7 +118,7 @@ export default function DiscoverScreen() {
         </View>
         <TouchableOpacity style={styles.likedCount}>
           <Ionicons name="sparkles-outline" size={18} color="#f093a4" />
-          <Text style={styles.likedText}>{likedList.length}</Text>
+          <Text style={styles.likedText}>{likedCount}</Text>
         </TouchableOpacity>
       </View>
 
@@ -148,14 +152,14 @@ function Card({ card, style, dimmed }) {
         colors={["rgba(0,0,0,0.1)", "rgba(0,0,0,0)"]}
         style={StyleSheet.absoluteFillObject}
       />
-      <Image source={{ uri: card.image }} style={styles.cardImage} />
+      <Image source={{ uri: card.heroImage || card.avatar }} style={styles.cardImage} />
       <View style={styles.cardOverlay}>
         <Text style={styles.cardName}>{card.name}</Text>
-        <Text style={styles.cardTitle}>{card.title} · {card.age} · {card.city}</Text>
+        <Text style={styles.cardTitle}>{card.title}{card.city ? ` · ${card.city}` : ''}</Text>
         <Text style={styles.cardDescription}>{card.description}</Text>
 
         <View style={styles.tagList}>
-          {card.interests.map((tag) => (
+          {card.tags?.map((tag) => (
             <View key={tag} style={styles.tagChip}>
               <Text style={styles.tagText}>{tag}</Text>
             </View>
@@ -171,6 +175,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff8fb',
     paddingHorizontal: 20,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginTop: 16,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 8,
   },
   header: {
     flexDirection: 'row',

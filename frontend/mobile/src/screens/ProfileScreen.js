@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -11,9 +12,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getUserSettings, updateUserSettings } from '../storage/db';
 
-const settings = [
-  { id: 'wallet', label: 'Moly 钱包', icon: 'wallet-outline' },
+const quickLinks = [
+  { id: 'wallet', label: '心动币钱包', icon: 'wallet-outline' },
   { id: 'api', label: 'API 设置', icon: 'code-outline' },
   { id: 'bias', label: '聊天偏好设置', icon: 'options-outline' },
   { id: 'backup', label: '聊天记录备份', icon: 'cloud-upload-outline' },
@@ -22,8 +24,30 @@ const settings = [
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const [pinChat, setPinChat] = React.useState(true);
-  const [memory, setMemory] = React.useState(true);
+  const [settings, setSettings] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const record = await getUserSettings();
+      setSettings(record);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const handleToggle = async (field, value) => {
+    setSettings((prev) => ({ ...prev, [field]: value ? 1 : 0 }));
+    await updateUserSettings({ [field]: value ? 1 : 0 });
+  };
+
+  if (loading || !settings) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}> 
+        <ActivityIndicator color="#f093a4" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: Math.max(insets.top - 8, 8) }]}> 
@@ -36,7 +60,7 @@ export default function ProfileScreen() {
             source={{ uri: 'https://i.pravatar.cc/200?img=65' }}
             style={styles.heroAvatar}
           />
-          <Text style={styles.heroName}>帅</Text>
+          <Text style={styles.heroName}>{settings.nickname || '心动旅人'}</Text>
           <TouchableOpacity style={styles.statusButton}>
             <Ionicons name="heart-outline" size={14} color="#f093a4" />
             <Text style={styles.statusText}>+ 状态</Text>
@@ -44,7 +68,7 @@ export default function ProfileScreen() {
         </LinearGradient>
 
         <View style={styles.section}>
-          {settings.map((item) => (
+          {quickLinks.map((item) => (
             <TouchableOpacity key={item.id} style={styles.settingRow}>
               <View style={styles.settingLeft}>
                 <Ionicons name={item.icon} size={18} color="#f093a4" />
@@ -57,21 +81,30 @@ export default function ProfileScreen() {
 
         <LinearGradient colors={["#fff8ec", "#ffe7d1"]} style={styles.banner}>
           <View>
-            <Text style={styles.bannerTitle}>免费领取 Moly 币！</Text>
+            <Text style={styles.bannerTitle}>免费领取心动币！</Text>
             <Text style={styles.bannerDesc}>邀请好友、或发小红书笔记得次数奖励</Text>
+            <Text style={styles.bannerBalance}>当前余额：{settings.currency_balance} 枚</Text>
           </View>
           <Ionicons name="gift" size={32} color="#f7a26a" />
         </LinearGradient>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>基本设置</Text>
-          <SettingField label="昵称" value="帅" />
+          <SettingField label="昵称" value={settings.nickname || '未设置'} />
           <View style={styles.separator} />
-          <SettingField label="性别" value="男" />
+          <SettingField label="性别" value={settings.gender || '保密'} />
           <View style={styles.separator} />
-          <ToggleField label="置顶聊天" value={pinChat} onValueChange={setPinChat} />
+          <ToggleField
+            label="置顶聊天"
+            value={Boolean(settings.pin_chat)}
+            onValueChange={(value) => handleToggle('pin_chat', value)}
+          />
           <View style={styles.separator} />
-          <ToggleField label="对话记忆" value={memory} onValueChange={setMemory} />
+          <ToggleField
+            label="对话记忆"
+            value={Boolean(settings.memory_enabled)}
+            onValueChange={(value) => handleToggle('memory_enabled', value)}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -201,6 +234,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#f0854b',
     marginTop: 4,
+  },
+  bannerBalance: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#f0854b',
+    fontWeight: '600',
   },
   sectionTitle: {
     fontSize: 16,
