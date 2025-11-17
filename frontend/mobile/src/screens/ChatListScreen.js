@@ -51,7 +51,11 @@ export default function ChatListScreen({ navigation }) {
     <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}> 
       <View style={styles.header}>
         <Text style={styles.headerTitle}>消息</Text>
-        <TouchableOpacity style={styles.headerButton} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('CreateRole')}
+        >
           <Feather name="plus" size={20} color="#8f8f8f" />
         </TouchableOpacity>
       </View>

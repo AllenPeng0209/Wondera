@@ -10,6 +10,8 @@ import ChatListScreen from './src/screens/ChatListScreen';
 import ConversationScreen from './src/screens/ConversationScreen';
 import DiscoverScreen from './src/screens/DiscoverScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import RoleSettingsScreen from './src/screens/RoleSettingsScreen';
+import CreateRoleScreen from './src/screens/CreateRoleScreen';
 import { initDatabase } from './src/storage/db';
 
 const Stack = createNativeStackNavigator();
@@ -87,6 +89,8 @@ export default function App() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Home" component={MainTabs} />
           <Stack.Screen name="Conversation" component={ConversationScreen} />
+          <Stack.Screen name="RoleSettings" component={RoleSettingsScreen} />
+          <Stack.Screen name="CreateRole" component={CreateRoleScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

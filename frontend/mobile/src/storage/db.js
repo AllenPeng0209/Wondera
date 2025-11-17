@@ -3,6 +3,7 @@ import { roleSeeds } from '../data/seeds';
 
 let databasePromise;
 const now = () => Date.now();
+const uniqueId = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
 function getDatabase() {
   if (!databasePromise) {
@@ -90,6 +91,32 @@ export async function initDatabase() {
       created_at INTEGER
     );`);
 
+  await run(`CREATE TABLE IF NOT EXISTS role_settings (
+      role_id TEXT PRIMARY KEY,
+      allow_emoji INTEGER DEFAULT 1,
+      allow_knock INTEGER DEFAULT 1,
+      max_replies INTEGER DEFAULT 5,
+      persona_note TEXT,
+      expression_style TEXT,
+      catchphrase TEXT,
+      user_personality TEXT,
+      nickname_override TEXT,
+      gender TEXT,
+      chat_background TEXT,
+      pin_chat INTEGER DEFAULT 0,
+      voice_preset TEXT,
+      memory_limit INTEGER DEFAULT 10,
+      auto_summary INTEGER DEFAULT 1
+    );`);
+
+  await ensureColumn('role_settings', 'nickname_override', 'TEXT');
+  await ensureColumn('role_settings', 'gender', 'TEXT');
+  await ensureColumn('role_settings', 'chat_background', 'TEXT');
+  await ensureColumn('role_settings', 'pin_chat', 'INTEGER DEFAULT 0');
+  await ensureColumn('role_settings', 'voice_preset', 'TEXT');
+  await ensureColumn('role_settings', 'memory_limit', 'INTEGER DEFAULT 10');
+  await ensureColumn('role_settings', 'auto_summary', 'INTEGER DEFAULT 1');
+
   await seedInitialData();
 }
 
@@ -129,6 +156,14 @@ async function seedInitialData() {
     await run(
       'INSERT INTO conversations (id, role_id, title, updated_at, script_cursor) VALUES (?, ?, ?, ?, 0);',
       [conversationId, role.id, role.name, now()]
+    );
+
+    await run(
+      `INSERT OR IGNORE INTO role_settings (
+        role_id, allow_emoji, allow_knock, max_replies, persona_note, expression_style, catchphrase,
+        user_personality, nickname_override, gender, chat_background, pin_chat, voice_preset, memory_limit, auto_summary
+      ) VALUES (?, 1, 1, 5, ?, ?, ?, ?, ?, ?, ?, 0, ?, 10, 1);`,
+      [role.id, '', '', '', '', '', '', role.name, '保密', '#ffeef2', '默认']
     );
 
     for (const message of role.conversation.initialMessages) {
@@ -248,4 +283,73 @@ export async function updateUserSettings(updates) {
   const values = keys.map((key) => updates[key]);
   values.push('default');
   await run(`UPDATE user_settings SET ${assignments} WHERE id = ?;`, values);
+}
+
+async function ensureRoleSettings(roleId) {
+  await run(
+    'INSERT OR IGNORE INTO role_settings (role_id, allow_emoji, allow_knock, max_replies, persona_note, expression_style, catchphrase, user_personality) VALUES (?, 1, 1, 5, ?, ?, ?, ?);',
+    [roleId, '', '', '', '']
+  );
+}
+
+export async function getRoleSettings(roleId) {
+  await ensureRoleSettings(roleId);
+  const record = await getFirst('SELECT * FROM role_settings WHERE role_id = ? LIMIT 1;', [roleId]);
+  return record;
+}
+
+export async function updateRoleSettings(roleId, updates) {
+  await ensureRoleSettings(roleId);
+  const keys = Object.keys(updates || {});
+  if (!keys.length) return;
+  const assignments = keys.map((key) => `${key} = ?`).join(', ');
+  const values = keys.map((key) => updates[key]);
+  values.push(roleId);
+  await run(`UPDATE role_settings SET ${assignments} WHERE role_id = ?;`, values);
+}
+
+export async function clearConversationMessages(conversationId) {
+  await run('DELETE FROM messages WHERE conversation_id = ?;', [conversationId]);
+  await run('UPDATE conversations SET updated_at = ? WHERE id = ?;', [now(), conversationId]);
+}
+
+export async function createRoleWithConversation(data) {
+  const roleId = data.id || uniqueId('role');
+  const conversationId = uniqueId('conv');
+  const scriptLines = data.scriptLines?.length ? data.scriptLines : ['请你保持温柔，陪伴用户。'];
+
+  await run(
+    'INSERT INTO roles (id, name, avatar, persona, mood, greeting, script, title, city, description, tags, hero_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
+    [
+      roleId,
+      data.name || '新的心动角色',
+      data.avatar || 'https://i.pravatar.cc/120?img=15',
+      data.persona || '一个贴心的AI伙伴',
+      data.mood || '心动',
+      data.greeting || '从现在开始，由我来守护你。',
+      JSON.stringify(scriptLines),
+      data.title || '心动嘉宾',
+      data.city || '云端',
+      data.description || data.persona || '',
+      JSON.stringify(data.tags || []),
+      data.heroImage || data.avatar || 'https://images.unsplash.com/photo-1504593811423-6dd665756598?auto=format&fit=crop&w=900&q=80',
+    ]
+  );
+
+  await run(
+    'INSERT INTO conversations (id, role_id, title, updated_at, script_cursor) VALUES (?, ?, ?, ?, 0);',
+    [conversationId, roleId, data.name || '新的心动角色', now()]
+  );
+
+  await ensureRoleSettings(roleId);
+  await updateRoleSettings(roleId, {
+    nickname_override: data.name || '新的心动角色',
+    persona_note: data.persona || '',
+  });
+
+  if (data.greeting) {
+    await addMessage(conversationId, 'ai', data.greeting, now());
+  }
+
+  return { roleId, conversationId };
 }

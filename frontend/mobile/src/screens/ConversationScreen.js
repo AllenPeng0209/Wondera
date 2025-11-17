@@ -121,20 +121,25 @@ export default function ConversationScreen({ navigation, route }) {
   const topPadding = Math.max(insets.top - 8, 8);
   return (
     <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}> 
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={22} color="#333" />
-        </TouchableOpacity>
-        <Image source={{ uri: role.avatar }} style={styles.headerAvatar} />
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerName}>{role.name}</Text>
-          <View style={styles.moodPill}>
-            <Ionicons name="leaf-outline" color="#f093a4" size={12} />
-            <Text style={styles.moodText}>{role.mood || '想你'}</Text>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={22} color="#333" />
+          </TouchableOpacity>
+          <Image source={{ uri: role.avatar }} style={styles.headerAvatar} />
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerName}>{role.name}</Text>
+            <View style={styles.moodPill}>
+              <Ionicons name="leaf-outline" color="#f093a4" size={12} />
+              <Text style={styles.moodText}>{role.mood || '想你'}</Text>
+            </View>
           </View>
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => navigation.navigate('RoleSettings', { roleId: role.id, conversationId: conversation.id })}
+        >
+          <Ionicons name="settings-outline" size={18} color="#f093a4" />
+        </TouchableOpacity>
         </View>
-        <View style={{ width: 32 }} />
-      </View>
 
       <KeyboardAvoidingView
         style={styles.chatArea}
@@ -334,5 +339,14 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.6,
+  },
+  settingsButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#f1d7de',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

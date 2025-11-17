@@ -6,8 +6,10 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,6 +28,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [editor, setEditor] = useState({ visible: false, field: null, label: '', value: '', type: 'text' });
 
   useEffect(() => {
     async function load() {
@@ -39,6 +42,20 @@ export default function ProfileScreen() {
   const handleToggle = async (field, value) => {
     setSettings((prev) => ({ ...prev, [field]: value ? 1 : 0 }));
     await updateUserSettings({ [field]: value ? 1 : 0 });
+  };
+
+  const openEditor = (field, label, value, type = 'text') => {
+    setEditor({ visible: true, field, label, value: value || '', type });
+  };
+
+  const closeEditor = () => setEditor({ visible: false, field: null, label: '', value: '', type: 'text' });
+
+  const saveEditor = async () => {
+    if (!editor.field) return;
+    const payload = { [editor.field]: editor.value };
+    await updateUserSettings(payload);
+    setSettings((prev) => ({ ...prev, ...payload }));
+    closeEditor();
   };
 
   if (loading || !settings) {
@@ -90,9 +107,17 @@ export default function ProfileScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>基本设置</Text>
-          <SettingField label="昵称" value={settings.nickname || '未设置'} />
+          <SettingField
+            label="昵称"
+            value={settings.nickname || '未设置'}
+            onPress={() => openEditor('nickname', '昵称', settings.nickname)}
+          />
           <View style={styles.separator} />
-          <SettingField label="性别" value={settings.gender || '保密'} />
+          <SettingField
+            label="性别"
+            value={settings.gender || '保密'}
+            onPress={() => openEditor('gender', '性别', settings.gender || '保密', 'gender')}
+          />
           <View style={styles.separator} />
           <ToggleField
             label="置顶聊天"
@@ -106,20 +131,27 @@ export default function ProfileScreen() {
             onValueChange={(value) => handleToggle('memory_enabled', value)}
           />
         </View>
+
+        <EditModal
+          editor={editor}
+          onClose={closeEditor}
+          onSave={saveEditor}
+          onChangeValue={(value) => setEditor((prev) => ({ ...prev, value }))}
+        />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function SettingField({ label, value }) {
+function SettingField({ label, value, onPress }) {
   return (
-    <View style={styles.fieldRow}>
+    <TouchableOpacity style={styles.fieldRow} onPress={onPress} activeOpacity={0.8}>
       <View>
         <Text style={styles.fieldLabel}>{label}</Text>
         <Text style={styles.fieldValue}>{value}</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color="#d1d1d1" />
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -136,6 +168,51 @@ function ToggleField({ label, value, onValueChange }) {
         trackColor={{ false: '#e2e2e2', true: '#ffd4e0' }}
       />
     </View>
+  );
+}
+
+function EditModal({ editor, onClose, onSave, onChangeValue }) {
+  if (!editor.visible) return null;
+
+  return (
+    <Modal transparent animationType="fade" visible={editor.visible}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>编辑{editor.label}</Text>
+          {editor.type === 'gender' ? (
+            <View style={styles.genderRow}>
+              {['男', '女', '保密'].map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[styles.genderChip, editor.value === option && styles.genderChipActive]}
+                  onPress={() => onChangeValue(option)}
+                >
+                  <Text style={[styles.genderText, editor.value === option && styles.genderTextActive]}>
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <TextInput
+              autoFocus
+              style={styles.modalInput}
+              value={editor.value}
+              placeholder={`请输入${editor.label}`}
+              onChangeText={onChangeValue}
+            />
+          )}
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={styles.modalButtonSecondary} onPress={onClose}>
+              <Text style={styles.modalButtonTextSecondary}>取消</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalButtonPrimary} onPress={onSave}>
+              <Text style={styles.modalButtonTextPrimary}>保存</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -266,5 +343,88 @@ const styles = StyleSheet.create({
   separator: {
     height: 1,
     backgroundColor: '#f3f3f3',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 16,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#f2c2cf',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginBottom: 18,
+    color: '#333',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalButtonSecondary: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#f1b8c4',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  modalButtonPrimary: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#f093a4',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  modalButtonTextSecondary: {
+    color: '#f093a4',
+    fontWeight: '600',
+  },
+  modalButtonTextPrimary: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  genderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  genderChip: {
+    flex: 1,
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#f1b8c4',
+    alignItems: 'center',
+  },
+  genderChipActive: {
+    backgroundColor: '#fce3ea',
+    borderColor: '#f093a4',
+  },
+  genderText: {
+    color: '#bd7a8a',
+  },
+  genderTextActive: {
+    color: '#f093a4',
+    fontWeight: '600',
   },
 });
