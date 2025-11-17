@@ -17,14 +17,14 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getUserSettings, updateUserSettings } from '../storage/db';
 
 const quickLinks = [
-  { id: 'wallet', label: '心动币钱包', icon: 'wallet-outline' },
-  { id: 'api', label: 'API 设置', icon: 'code-outline' },
-  { id: 'bias', label: '聊天偏好设置', icon: 'options-outline' },
-  { id: 'backup', label: '聊天记录备份', icon: 'cloud-upload-outline' },
-  { id: 'feedback', label: '功能许愿和反馈', icon: 'chatbubble-ellipses-outline' },
+  { id: 'wallet', label: '心动币钱包', icon: 'wallet-outline', route: 'Wallet' },
+  { id: 'api', label: 'API 设置', icon: 'code-outline', route: 'ApiSettings' },
+  { id: 'bias', label: '聊天偏好设置', icon: 'options-outline', route: 'PreferenceSettings' },
+  { id: 'backup', label: '聊天记录备份', icon: 'cloud-upload-outline', route: null },
+  { id: 'feedback', label: '功能许愿和反馈', icon: 'chatbubble-ellipses-outline', route: null },
 ];
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -86,10 +86,15 @@ export default function ProfileScreen() {
 
         <View style={styles.section}>
           {quickLinks.map((item) => (
-            <TouchableOpacity key={item.id} style={styles.settingRow}>
+            <TouchableOpacity
+              key={item.id}
+              style={styles.settingRow}
+              activeOpacity={item.route ? 0.8 : 1}
+              onPress={() => item.route && navigation.navigate(item.route)}
+            >
               <View style={styles.settingLeft}>
-                <Ionicons name={item.icon} size={18} color="#f093a4" />
-                <Text style={styles.settingLabel}>{item.label}</Text>
+                <Ionicons name={item.icon} size={18} color={item.route ? '#f093a4' : '#cfcfcf'} />
+                <Text style={[styles.settingLabel, !item.route && { color: '#cfcfcf' }]}>{item.label}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#d1d1d1" />
             </TouchableOpacity>
@@ -292,6 +297,9 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontSize: 15,
     color: '#333',
+  },
+  disabledText: {
+    color: '#cfcfcf',
   },
   banner: {
     marginHorizontal: 20,

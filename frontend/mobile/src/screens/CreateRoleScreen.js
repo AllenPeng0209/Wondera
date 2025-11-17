@@ -53,9 +53,9 @@ export default function CreateRoleScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>基本信息</Text>
-          <LabeledInput label="昵称" value={name} onChangeText={setName} placeholder="输入角色昵称" />
-          <LabeledInput label="身份标签" value={title} onChangeText={setTitle} placeholder="如：温柔医生" />
-          <LabeledInput label="心情状态" value={mood} onChangeText={setMood} placeholder="如：想你" />
+          <BasicInput label="昵称" value={name} onChangeText={setName} placeholder="输入角色昵称" />
+          <BasicInput label="身份标签" value={title} onChangeText={setTitle} placeholder="如：温柔医生" />
+          <BasicInput label="心情状态" value={mood} onChangeText={setMood} placeholder="如：想你" />
         </View>
 
         <View style={styles.sectionCard}>
@@ -89,7 +89,7 @@ export default function CreateRoleScreen({ navigation }) {
   );
 }
 
-function LabeledInput({ label, value, onChangeText, placeholder }) {
+function BasicInput({ label, value, onChangeText, placeholder }) {
   return (
     <View style={styles.inputBlock}>
       <Text style={styles.label}>{label}</Text>

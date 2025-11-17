@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -12,6 +13,9 @@ import DiscoverScreen from './src/screens/DiscoverScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import RoleSettingsScreen from './src/screens/RoleSettingsScreen';
 import CreateRoleScreen from './src/screens/CreateRoleScreen';
+import WalletScreen from './src/screens/WalletScreen';
+import ApiSettingsScreen from './src/screens/ApiSettingsScreen';
+import PreferenceSettingsScreen from './src/screens/PreferenceSettingsScreen';
 import { initDatabase } from './src/storage/db';
 
 const Stack = createNativeStackNavigator();
@@ -84,15 +88,20 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer theme={navTheme}>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Home" component={MainTabs} />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <NavigationContainer theme={navTheme}>
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Home" component={MainTabs} />
           <Stack.Screen name="Conversation" component={ConversationScreen} />
           <Stack.Screen name="RoleSettings" component={RoleSettingsScreen} />
           <Stack.Screen name="CreateRole" component={CreateRoleScreen} />
+          <Stack.Screen name="Wallet" component={WalletScreen} />
+          <Stack.Screen name="ApiSettings" component={ApiSettingsScreen} />
+          <Stack.Screen name="PreferenceSettings" component={PreferenceSettingsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
-    </SafeAreaProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

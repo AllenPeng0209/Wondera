@@ -113,12 +113,16 @@ export default function RoleSettingsScreen({ navigation, route }) {
             <Ionicons name="paw-outline" size={30} color="#f093a4" />
           </View>
           <View style={styles.basicFields}>
-            <BasicInput
-              label="昵称"
-              value={settings.nickname}
-              placeholder="输入昵称"
-              onChangeText={(text) => setSettings((prev) => ({ ...prev, nickname: text }))}
-            />
+            <View style={styles.basicInputRow}>
+              <Text style={styles.label}>昵称</Text>
+              <TextInput
+                style={styles.basicInput}
+                value={settings.nickname}
+                placeholder="输入昵称"
+                placeholderTextColor="#c9b4bd"
+                onChangeText={(text) => setSettings((prev) => ({ ...prev, nickname: text }))}
+              />
+            </View>
             <SegmentedRow
               label="性别"
               options={['男', '女', '保密']}
@@ -285,21 +289,6 @@ function TextareaRow({ label, placeholder, value, onChangeText }) {
         multiline
         value={value}
         onChangeText={onChangeText}
-      />
-    </View>
-  );
-}
-
-function BasicInput({ label, value, placeholder, onChangeText }) {
-  return (
-    <View style={styles.basicInputRow}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={styles.basicInput}
-        value={value}
-        placeholder={placeholder}
-        onChangeText={onChangeText}
-        placeholderTextColor="#c9b4bd"
       />
     </View>
   );

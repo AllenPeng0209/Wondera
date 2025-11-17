@@ -82,8 +82,26 @@ export async function initDatabase() {
       chat_background TEXT,
       pin_chat INTEGER DEFAULT 1,
       memory_enabled INTEGER DEFAULT 1,
-      currency_balance INTEGER DEFAULT 520
+      currency_balance INTEGER DEFAULT 520,
+      wallet_recharge_history TEXT,
+      api_provider TEXT,
+      api_key TEXT,
+      api_model TEXT,
+      api_mode TEXT,
+      bubble_style TEXT,
+      immersive_mode INTEGER DEFAULT 0,
+      swipe_reply INTEGER DEFAULT 0,
+      wait_to_reply INTEGER DEFAULT 0
     );`);
+  await ensureColumn('user_settings', 'wallet_recharge_history', 'TEXT');
+  await ensureColumn('user_settings', 'api_provider', 'TEXT');
+  await ensureColumn('user_settings', 'api_key', 'TEXT');
+  await ensureColumn('user_settings', 'api_model', 'TEXT');
+  await ensureColumn('user_settings', 'api_mode', 'TEXT');
+  await ensureColumn('user_settings', 'bubble_style', 'TEXT');
+  await ensureColumn('user_settings', 'immersive_mode', 'INTEGER DEFAULT 0');
+  await ensureColumn('user_settings', 'swipe_reply', 'INTEGER DEFAULT 0');
+  await ensureColumn('user_settings', 'wait_to_reply', 'INTEGER DEFAULT 0');
 
   await run(`CREATE TABLE IF NOT EXISTS liked_roles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,6 +145,12 @@ async function seedInitialData() {
       'INSERT INTO user_settings (id, nickname, gender, chat_background, pin_chat, memory_enabled, currency_balance) VALUES (?, ?, ?, ?, ?, ?, ?);',
       ['default', '帅', '男', '#ffeef2', 1, 1, 520]
     );
+    await updateUserSettings({
+      wallet_recharge_history: JSON.stringify([]),
+      api_provider: 'Dreamate Cloud',
+      api_mode: 'wallet',
+      bubble_style: 'default',
+    });
   }
 
   const existing = await getFirst('SELECT COUNT(*) as count FROM roles;');
@@ -352,4 +376,14 @@ export async function createRoleWithConversation(data) {
   }
 
   return { roleId, conversationId };
+}
+
+export async function deleteConversation(conversationId) {
+  const convo = await getFirst('SELECT role_id FROM conversations WHERE id = ? LIMIT 1;', [conversationId]);
+  if (!convo) return;
+  const roleId = convo.role_id;
+  await run('DELETE FROM messages WHERE conversation_id = ?;', [conversationId]);
+  await run('DELETE FROM conversations WHERE id = ?;', [conversationId]);
+  await run('DELETE FROM role_settings WHERE role_id = ?;', [roleId]);
+  await run('DELETE FROM roles WHERE id = ?;', [roleId]);
 }

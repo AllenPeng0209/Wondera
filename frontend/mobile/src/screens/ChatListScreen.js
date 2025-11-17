@@ -1,9 +1,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getConversations } from '../storage/db';
+import { getConversations, deleteConversation } from '../storage/db';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 
 export default function ChatListScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -24,26 +33,48 @@ export default function ChatListScreen({ navigation }) {
     loadConversations();
   }, [loadConversations]);
 
-  const renderConversation = ({ item }) => (
-    <TouchableOpacity
-      style={styles.chatRow}
-      onPress={() => navigation.navigate('Conversation', { conversationId: item.id })}
-      activeOpacity={0.8}
-    >
-      <View style={styles.avatarWrapper}>
-        <Image source={{ uri: item.avatar }} style={styles.avatar} />
-        <View style={[styles.onlineDot, { opacity: 0.6 }]} />
-      </View>
-      <View style={styles.chatBody}>
-        <View style={styles.chatHeader}>
-          <Text style={styles.chatName}>{item.name}</Text>
-          <Text style={styles.chatTime}>{formatTime(item.updatedAt)}</Text>
-        </View>
-        <Text style={styles.chatSnippet} numberOfLines={1}>
-          {item.lastMessage || item.greeting}
-        </Text>
-      </View>
+  const confirmDelete = (conversationId, name) => {
+    Alert.alert('删除对话', `确认删除与 ${name} 的全部聊天吗？`, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '删除',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteConversation(conversationId);
+          loadConversations();
+        },
+      },
+    ]);
+  };
+
+  const renderRightActions = (item) => (
+    <TouchableOpacity style={styles.deleteAction} onPress={() => confirmDelete(item.id, item.name)}>
+      <Text style={styles.deleteText}>删除</Text>
     </TouchableOpacity>
+  );
+
+  const renderConversation = ({ item }) => (
+    <Swipeable renderRightActions={() => renderRightActions(item)}>
+      <TouchableOpacity
+        style={styles.chatRow}
+        onPress={() => navigation.navigate('Conversation', { conversationId: item.id })}
+        activeOpacity={0.8}
+      >
+        <View style={styles.avatarWrapper}>
+          <Image source={{ uri: item.avatar }} style={styles.avatar} />
+          <View style={[styles.onlineDot, { opacity: 0.6 }]} />
+        </View>
+        <View style={styles.chatBody}>
+          <View style={styles.chatHeader}>
+            <Text style={styles.chatName}>{item.name}</Text>
+            <Text style={styles.chatTime}>{formatTime(item.updatedAt)}</Text>
+          </View>
+          <Text style={styles.chatSnippet} numberOfLines={1}>
+            {item.lastMessage || item.greeting}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </Swipeable>
   );
 
   const topPadding = Math.max(insets.top - 8, 8);
@@ -156,5 +187,17 @@ const styles = StyleSheet.create({
   chatSnippet: {
     fontSize: 13,
     color: '#8c8c8c',
+  },
+  deleteAction: {
+    width: 80,
+    backgroundColor: '#ff5b6b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    marginVertical: 8,
+  },
+  deleteText: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });
