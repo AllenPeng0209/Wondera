@@ -1,15 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getConversations } from '../storage/db';
-
-const Tabs = [
-  { id: 'messages', label: '消息', icon: 'chatbubble-ellipses-outline', active: true },
-  { id: 'moments', label: '发现', icon: 'heart-outline' },
-  { id: 'profile', label: '我的', icon: 'person-circle-outline' },
-];
 
 export default function ChatListScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -70,18 +64,6 @@ export default function ChatListScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       />
 
-      <View style={styles.tabBar}>
-        {Tabs.map((tab) => (
-          <TouchableOpacity key={tab.id} style={styles.tabItem} activeOpacity={0.9}>
-            <Ionicons
-              name={tab.icon}
-              size={24}
-              color={tab.active ? '#f093a4' : '#a2a2a2'}
-            />
-            <Text style={[styles.tabLabel, tab.active && styles.tabLabelActive]}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
     </SafeAreaView>
   );
 }
@@ -170,28 +152,5 @@ const styles = StyleSheet.create({
   chatSnippet: {
     fontSize: 13,
     color: '#8c8c8c',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: '#f0f0f0',
-    paddingVertical: 10,
-    backgroundColor: '#fff',
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-  },
-  tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabLabel: {
-    fontSize: 12,
-    marginTop: 4,
-    color: '#a2a2a2',
-  },
-  tabLabelActive: {
-    color: '#f093a4',
-    fontWeight: '600',
   },
 });
