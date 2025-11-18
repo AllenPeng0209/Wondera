@@ -163,9 +163,11 @@ export default function ConversationScreen({ navigation, route }) {
     [conversation, roleConfig]
   );
 
+  const isBlocked = !!(roleConfig && Number(roleConfig.is_blocked));
+
   const handleSend = async () => {
     if (!inputValue.trim() || !conversation || !role) return;
-    if (roleConfig?.is_blocked) {
+    if (isBlocked) {
       Alert.alert('已拉黑', '你已拉黑 Ta，无法继续对话。');
       return;
     }
@@ -322,7 +324,7 @@ export default function ConversationScreen({ navigation, route }) {
             <Ionicons name="settings-outline" size={18} color="#f093a4" />
           </TouchableOpacity>
         </View>
-        {roleConfig?.is_blocked && (
+        {isBlocked && (
           <View style={styles.blockBanner}>
             <Ionicons name="alert-circle-outline" size={16} color="#f093a4" />
             <Text style={styles.blockBannerText}>你已拉黑 Ta，解除后方可继续聊天</Text>
