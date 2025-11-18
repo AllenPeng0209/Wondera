@@ -5,7 +5,7 @@ async function callQwen(messages, systemPrompt) {
   try {
     const text = await sendBailianMessage(messages, {
       system: systemPrompt,
-      model: 'qwen-turbo',
+      model: 'qwen-plus',
       temperature: 0.7,
       top_p: 0.8,
     });
@@ -20,7 +20,7 @@ async function callQwen(messages, systemPrompt) {
 }
 
 function prepareSystemPrompt(role) {
-  return `请严格扮演“${role.name}”，具备以下设定：${role.persona}。保持中文对话，语气贴合角色，不要暴露自己是 AI。`;
+  return `请严格扮演“${role.name}”，具备以下设定：${role.persona}`;
 }
 
 function buildMessagePayload(history) {

@@ -145,7 +145,7 @@ async function seedInitialData() {
   if ((user?.count ?? 0) === 0) {
     await run(
       'INSERT INTO user_settings (id, nickname, gender, chat_background, pin_chat, memory_enabled, currency_balance) VALUES (?, ?, ?, ?, ?, ?, ?);',
-      ['default', '帅', '男', '#ffeef2', 1, 1, 520]
+      ['default', 'MOMOMOMO', '男', '#ffeef2', 1, 1, 520]
     );
     await updateUserSettings({
       wallet_recharge_history: JSON.stringify([]),
@@ -155,9 +155,26 @@ async function seedInitialData() {
     });
   }
 
-  const existing = await getFirst('SELECT COUNT(*) as count FROM roles;');
-  const count = existing?.count ?? 0;
-  if (count > 0) return;
+  // Check if we have the new roles (antoine, edward, kieran)
+  const newRoleCheck = await getFirst('SELECT COUNT(*) as count FROM roles WHERE id IN (?, ?, ?);', ['antoine', 'edward', 'kieran']);
+  const hasNewRoles = (newRoleCheck?.count ?? 0) === 3;
+
+  // Check if avatar data is in the new format (string IDs instead of require objects)
+  const avatarCheck = await getFirst('SELECT avatar FROM roles WHERE id = ? LIMIT 1;', ['antoine']);
+  const hasCorrectAvatarFormat = avatarCheck?.avatar === 'antoine';
+
+  // If we don't have the new roles OR avatars are in wrong format, clear and re-insert
+  if (!hasNewRoles || !hasCorrectAvatarFormat) {
+    // Delete old roles, conversations, messages, and role_settings
+    await run('DELETE FROM messages;');
+    await run('DELETE FROM conversations;');
+    await run('DELETE FROM role_settings;');
+    await run('DELETE FROM roles;');
+    console.log('[DB] Cleared old roles or updating avatar format, inserting new ones...');
+  } else {
+    // We already have the new roles with correct format, skip
+    return;
+  }
 
   for (const role of roleSeeds) {
     await run(
@@ -220,7 +237,7 @@ export async function getConversations() {
 
 export async function getConversationDetail(conversationId) {
   const record = await getFirst(
-    `SELECT c.*, r.name, r.avatar, r.persona, r.mood, r.greeting, r.script
+    `SELECT c.*, r.name, r.avatar, r.persona, r.mood, r.greeting, r.script, r.hero_image
      FROM conversations c
      JOIN roles r ON r.id = c.role_id
      WHERE c.id = ?
@@ -244,6 +261,7 @@ export async function getConversationDetail(conversationId) {
       mood: record.mood,
       greeting: record.greeting,
       script: JSON.parse(record.script || '[]'),
+      heroImage: record.hero_image,
     },
   };
 }
@@ -374,7 +392,22 @@ export async function createRoleWithConversation(data) {
   });
 
   if (data.greeting) {
-    await addMessage(conversationId, 'ai', data.greeting, now());
+    const normalized = (data.greeting || '').replace(/\r/g, '').trim();
+    if (normalized) {
+      let chunks = [];
+      if (normalized.includes('\n')) {
+        // 按换行符拆分成多个独立消息
+        chunks = normalized.split('\n').filter(line => line.trim());
+      } else {
+        chunks = [normalized];
+      }
+
+      // 为每个片段创建独立消息，时间戳递增以保持顺序
+      const baseTime = now();
+      for (let i = 0; i < chunks.length; i++) {
+        await addMessage(conversationId, 'ai', chunks[i], baseTime + i);
+      }
+    }
   }
 
   return { roleId, conversationId };
@@ -388,4 +421,12 @@ export async function deleteConversation(conversationId) {
   await run('DELETE FROM conversations WHERE id = ?;', [conversationId]);
   await run('DELETE FROM role_settings WHERE role_id = ?;', [roleId]);
   await run('DELETE FROM roles WHERE id = ?;', [roleId]);
+}
+
+export async function getConversationByRoleId(roleId) {
+  const record = await getFirst(
+    'SELECT id FROM conversations WHERE role_id = ? LIMIT 1;',
+    [roleId]
+  );
+  return record?.id || null;
 }

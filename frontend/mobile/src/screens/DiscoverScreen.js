@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Dimensions,
+  FlatList,
   Image,
-  PanResponder,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -12,20 +13,28 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getRoles, getLikedRolesCount, saveRolePreference } from '../storage/db';
+import { getRoles, getLikedRolesCount, getConversationByRoleId } from '../storage/db';
+import { getRoleImage } from '../data/images';
 
-const SWIPE_THRESHOLD = 120;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const CARD_WIDTH = SCREEN_WIDTH - 40; // 20px padding on each side
+const CARD_SPACING = 20;
 
-export default function DiscoverScreen() {
+export default function DiscoverScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [cards, setCards] = useState([]);
-  const [cardIndex, setCardIndex] = useState(0);
   const [likedCount, setLikedCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const position = useRef(new Animated.ValueXY()).current;
 
-  const currentCard = cards.length ? cards[cardIndex % cards.length] : null;
-  const nextCard = cards.length ? cards[(cardIndex + 1) % cards.length] : null;
+  // 计算卡片高度：屏幕高度 - 顶部安全区域 - 标题区域 - 底部Tab栏 - 底部安全区域 - 底部间距
+  const HEADER_HEIGHT = 70; // 标题区域高度
+  const TAB_BAR_HEIGHT = 49; // Tab 栏高度
+  const CARD_HEIGHT = SCREEN_HEIGHT - insets.top - HEADER_HEIGHT - TAB_BAR_HEIGHT - insets.bottom - 16;
+
+  // Create an extended array for infinite scrolling effect
+  const extendedCards = cards.length > 0
+    ? [...cards, ...cards, ...cards] // Triple the array
+    : [];
 
   useEffect(() => {
     async function load() {
@@ -38,79 +47,36 @@ export default function DiscoverScreen() {
     load();
   }, []);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onPanResponderMove: (_, gesture) => {
-          position.setValue({ x: gesture.dx, y: gesture.dy });
-        },
-        onPanResponderRelease: (_, gesture) => {
-          if (gesture.dx > SWIPE_THRESHOLD) {
-            handleSwipe('like');
-          } else if (gesture.dx < -SWIPE_THRESHOLD) {
-            handleSwipe('pass');
-          } else {
-            Animated.spring(position, {
-              toValue: { x: 0, y: 0 },
-              useNativeDriver: true,
-            }).start();
-          }
-        },
-      }),
-    [cardIndex]
-  );
+  const renderCard = ({ item }) => <Card card={item} navigation={navigation} cardHeight={CARD_HEIGHT} />;
 
-  const handleSwipe = (type) => {
-    if (!currentCard) return;
-    Animated.timing(position, {
-      toValue: { x: type === 'like' ? 400 : -400, y: 50 },
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      if (type === 'like') {
-        saveRolePreference(currentCard.id, true);
-        setLikedCount((prev) => prev + 1);
-      }
-      position.setValue({ x: 0, y: 0 });
-      setCardIndex((prev) => prev + 1);
-    });
-  };
-
-  const cardStyle = {
-    transform: [
-      ...position.getTranslateTransform(),
-      {
-        rotate: position.x.interpolate({
-          inputRange: [-250, 0, 250],
-          outputRange: ['-12deg', '0deg', '12deg'],
-        }),
-      },
-    ],
-  };
+  const getItemLayout = (data, index) => ({
+    length: CARD_WIDTH + CARD_SPACING,
+    offset: (CARD_WIDTH + CARD_SPACING) * index,
+    index,
+  });
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}> 
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator color="#f093a4" />
       </SafeAreaView>
     );
   }
 
-  if (!currentCard) {
+  if (cards.length === 0) {
     return (
-      <SafeAreaView style={[styles.container, { paddingTop: Math.max(insets.top - 8, 8) }]}> 
+      <SafeAreaView style={[styles.container, { paddingTop: Math.max(insets.top - 8, 8) }]}>
         <View style={styles.emptyState}>
           <Ionicons name="cloud-offline-outline" size={52} color="#f093a4" />
           <Text style={styles.emptyTitle}>暂时没有更多推荐</Text>
-          <Text style={styles.emptySubtitle}>稍后再来，新的心动角色正在登场。</Text>
+          <Text style={styles.emptySubtitle}>稍后再来,新的心动角色正在登场。</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: Math.max(insets.top - 8, 8) }]}> 
+    <SafeAreaView style={[styles.container, { paddingTop: Math.max(insets.top - 8, 8) }]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.headerLabel}>发现</Text>
@@ -118,55 +84,91 @@ export default function DiscoverScreen() {
         </View>
         <TouchableOpacity style={styles.likedCount}>
           <Ionicons name="sparkles-outline" size={18} color="#f093a4" />
-          <Text style={styles.likedText}>{likedCount}</Text>
+          <Text style={styles.likedText}>{likedCount || 0}</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.deckArea}>
-        {nextCard && (
-          <Card key={nextCard.id} card={nextCard} style={styles.nextCard} dimmed />
-        )}
-        {currentCard && (
-          <Animated.View style={[styles.cardWrapper, cardStyle]} {...panResponder.panHandlers}>
-            <Card card={currentCard} />
-          </Animated.View>
-        )}
-      </View>
-
-      <View style={styles.actions}>
-        <TouchableOpacity style={[styles.circleButton, styles.skipButton]} onPress={() => handleSwipe('pass')}>
-          <Ionicons name="close" size={24} color="#f093a4" />
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.circleButton, styles.likeButton]} onPress={() => handleSwipe('like')}>
-          <Ionicons name="heart" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <FlatList
+        data={extendedCards}
+        renderItem={renderCard}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
+        horizontal
+        pagingEnabled={false}
+        snapToInterval={CARD_WIDTH + CARD_SPACING}
+        decelerationRate="fast"
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        getItemLayout={getItemLayout}
+        initialScrollIndex={cards.length} // Start at the middle set
+        onScrollToIndexFailed={() => {}}
+      />
     </SafeAreaView>
   );
 }
 
-function Card({ card, style, dimmed }) {
-  return (
-    <Animated.View style={[styles.card, style, dimmed && { opacity: 0.5, transform: [{ scale: 0.96 }] }]}> 
-      <LinearGradient
-        colors={["rgba(0,0,0,0.1)", "rgba(0,0,0,0)"]}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <Image source={{ uri: card.heroImage || card.avatar }} style={styles.cardImage} />
-      <View style={styles.cardOverlay}>
-        <Text style={styles.cardName}>{card.name}</Text>
-        <Text style={styles.cardTitle}>{card.title}{card.city ? ` · ${card.city}` : ''}</Text>
-        <Text style={styles.cardDescription}>{card.description}</Text>
+function Card({ card, navigation, cardHeight }) {
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const imageSource = getRoleImage(card.id, 'heroImage') || getRoleImage(card.id, 'avatar');
 
-        <View style={styles.tagList}>
-          {card.tags?.map((tag) => (
-            <View key={tag} style={styles.tagChip}>
-              <Text style={styles.tagText}>{tag}</Text>
+  const handlePress = async () => {
+    // 开始淡出动画
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(async () => {
+      // 动画完成后跳转
+      try {
+        const conversationId = await getConversationByRoleId(card.id);
+        if (conversationId) {
+          navigation.navigate('Conversation', { conversationId });
+        } else {
+          console.warn('未找到该角色的对话');
+        }
+      } catch (error) {
+        console.error('跳转失败', error);
+      }
+      // 重置动画值以便下次使用
+      fadeAnim.setValue(1);
+    });
+  };
+
+  return (
+    <View style={[styles.cardContainer, { height: cardHeight }]}>
+      <TouchableOpacity
+        activeOpacity={0.95}
+        onPress={handlePress}
+      >
+        <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+          <Image source={imageSource} style={styles.cardImage} />
+
+          {/* Gradient overlay for text readability */}
+          <View style={styles.gradientWrapper}>
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.7)']}
+              style={styles.gradientOverlay}
+            />
+          </View>
+
+          <View style={styles.cardOverlay}>
+            <Text style={styles.cardName}>{card.name || ''}</Text>
+            <Text style={styles.cardTitle}>
+              {card.title || ''}
+              {card.city ? ` · ${card.city}` : ''}
+            </Text>
+            <Text style={styles.cardDescription}>{card.description || ''}</Text>
+
+            <View style={styles.tagList}>
+              {Array.isArray(card.tags) && card.tags.map((tag) => (
+                <View key={tag} style={styles.tagChip}>
+                  <Text style={styles.tagText}>{tag}</Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
-      </View>
-    </Animated.View>
+          </View>
+        </Animated.View>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -174,7 +176,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff8fb',
-    paddingHorizontal: 20,
   },
   emptyState: {
     flex: 1,
@@ -196,7 +197,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
+    paddingHorizontal: 20,
   },
   headerLabel: {
     fontSize: 24,
@@ -221,18 +223,16 @@ const styles = StyleSheet.create({
     color: '#f093a4',
     fontWeight: '600',
   },
-  deckArea: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  listContent: {
+    paddingHorizontal: 20,
   },
-  cardWrapper: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
+  cardContainer: {
+    width: CARD_WIDTH,
+    marginRight: CARD_SPACING,
   },
   card: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
     borderRadius: 28,
     overflow: 'hidden',
     backgroundColor: '#fff',
@@ -242,15 +242,18 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 8 },
   },
-  nextCard: {
-    position: 'absolute',
-    width: '94%',
-    height: '94%',
-    bottom: -10,
-  },
   cardImage: {
     width: '100%',
     height: '100%',
+    borderRadius: 28,
+  },
+  gradientOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '50%',
+    borderRadius: 28,
   },
   cardOverlay: {
     position: 'absolute',
@@ -290,28 +293,5 @@ const styles = StyleSheet.create({
   tagText: {
     color: '#fff',
     fontWeight: '600',
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    marginBottom: 20,
-  },
-  circleButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  skipButton: {
-    backgroundColor: '#fff',
-  },
-  likeButton: {
-    backgroundColor: '#f093a4',
   },
 });

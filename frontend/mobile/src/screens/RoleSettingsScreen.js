@@ -79,7 +79,12 @@ export default function RoleSettingsScreen({ navigation, route }) {
         style: 'destructive',
         onPress: async () => {
           await clearConversationMessages(conversationId);
-          Alert.alert('已清空', '聊天记录已清空');
+          // 导航回对话页面，并传递参数通知需要重新发送开场白
+          navigation.navigate('Conversation', {
+            conversationId,
+            roleId,
+            shouldResendGreeting: true,
+          });
         },
       },
     ]);

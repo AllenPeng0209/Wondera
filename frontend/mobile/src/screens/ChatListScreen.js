@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getConversations, deleteConversation } from '../storage/db';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { getRoleImage } from '../data/images';
 
 export default function ChatListScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -61,16 +62,16 @@ export default function ChatListScreen({ navigation }) {
         activeOpacity={0.8}
       >
         <View style={styles.avatarWrapper}>
-          <Image source={{ uri: item.avatar }} style={styles.avatar} />
+          <Image source={getRoleImage(item.roleId, 'avatar')} style={styles.avatar} />
           <View style={[styles.onlineDot, { opacity: 0.6 }]} />
         </View>
         <View style={styles.chatBody}>
           <View style={styles.chatHeader}>
-            <Text style={styles.chatName}>{item.name}</Text>
+            <Text style={styles.chatName}>{item.name || ''}</Text>
             <Text style={styles.chatTime}>{formatTime(item.updatedAt)}</Text>
           </View>
           <Text style={styles.chatSnippet} numberOfLines={1}>
-            {item.lastMessage || item.greeting}
+            {item.lastMessage || item.greeting || ''}
           </Text>
         </View>
       </TouchableOpacity>

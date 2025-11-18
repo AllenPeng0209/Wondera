@@ -74,7 +74,7 @@ export default function ProfileScreen({ navigation }) {
             <Ionicons name="settings-outline" size={20} color="#f093a4" />
           </TouchableOpacity>
           <Image
-            source={{ uri: 'https://i.pravatar.cc/200?img=65' }}
+            source={{ uri: 'https://api.dicebear.com/7.x/lorelei/svg?seed=MOMOMOMO' }}
             style={styles.heroAvatar}
           />
           <Text style={styles.heroName}>{settings.nickname || '心动旅人'}</Text>
@@ -105,7 +105,7 @@ export default function ProfileScreen({ navigation }) {
           <View>
             <Text style={styles.bannerTitle}>免费领取心动币！</Text>
             <Text style={styles.bannerDesc}>邀请好友、或发小红书笔记得次数奖励</Text>
-            <Text style={styles.bannerBalance}>当前余额：{settings.currency_balance} 枚</Text>
+            <Text style={styles.bannerBalance}>当前余额：{settings.currency_balance || 0} 枚</Text>
           </View>
           <Ionicons name="gift" size={32} color="#f7a26a" />
         </LinearGradient>
@@ -152,8 +152,8 @@ function SettingField({ label, value, onPress }) {
   return (
     <TouchableOpacity style={styles.fieldRow} onPress={onPress} activeOpacity={0.8}>
       <View>
-        <Text style={styles.fieldLabel}>{label}</Text>
-        <Text style={styles.fieldValue}>{value}</Text>
+        <Text style={styles.fieldLabel}>{label || ''}</Text>
+        <Text style={styles.fieldValue}>{value || ''}</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color="#d1d1d1" />
     </TouchableOpacity>
