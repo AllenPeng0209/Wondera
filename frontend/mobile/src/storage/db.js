@@ -243,6 +243,40 @@ export async function getConversations() {
   return rows;
 }
 
+// 找出适合“拍一拍”的会话：
+// - 对应角色允许 allow_knock
+// - 未被拉黑
+// - 一段时间没有更新（由 sinceMs 控制）
+export async function getKnockableConversations(sinceMs = 6 * 60 * 60 * 1000) {
+  const hasTimeLimit = typeof sinceMs === 'number' && sinceMs > 0;
+  const cutoff = hasTimeLimit ? now() - sinceMs : 0;
+
+  const timeCondition = hasTimeLimit
+    ? 'AND (c.updated_at IS NULL OR c.updated_at < ?)'
+    : '';
+
+  const sql = `
+      SELECT
+        c.id,
+        c.role_id as roleId,
+        c.updated_at as updatedAt,
+        r.name,
+        r.greeting
+      FROM conversations c
+      JOIN roles r ON r.id = c.role_id
+      JOIN role_settings s ON s.role_id = c.role_id
+      WHERE
+        s.allow_knock = 1
+        AND (s.is_blocked IS NULL OR s.is_blocked = 0)
+        ${timeCondition}
+      ORDER BY c.updated_at ASC
+      LIMIT 10;
+    `;
+
+  const rows = await getAll(sql, hasTimeLimit ? [cutoff] : []);
+  return rows;
+}
+
 export async function getConversationDetail(conversationId) {
   const record = await getFirst(
     `SELECT c.*, r.name, r.avatar, r.persona, r.mood, r.greeting, r.script, r.hero_image

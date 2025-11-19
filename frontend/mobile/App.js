@@ -17,6 +17,8 @@ import WalletScreen from './src/screens/WalletScreen';
 import ApiSettingsScreen from './src/screens/ApiSettingsScreen';
 import PreferenceSettingsScreen from './src/screens/PreferenceSettingsScreen';
 import { initDatabase } from './src/storage/db';
+import { requestNotificationPermissions } from './src/services/notifications';
+import { registerAiKnockBackgroundTask, runAiKnockOnce } from './src/background/aiKnockTask';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -71,6 +73,20 @@ export default function App() {
     (async () => {
       try {
         await initDatabase();
+        // 初始化本地通知 & 后台任务，让 AI 能在后台“拍一拍”
+        const granted = await requestNotificationPermissions();
+        if (!granted) {
+          console.log('[App] Notification permission not granted');
+        }
+        await registerAiKnockBackgroundTask();
+
+        // 开发环境下，为了方便在模拟器上验证“AI 主动发消息”，
+        // 启动后 5 秒自动触发一次后台拍一拍逻辑（传 0 忽略时间窗口）
+        if (__DEV__) {
+          setTimeout(() => {
+            runAiKnockOnce(0);
+          }, 5000);
+        }
       } catch (error) {
         console.error('Database init failed', error);
       } finally {
