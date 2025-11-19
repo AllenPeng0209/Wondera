@@ -72,8 +72,16 @@ export async function initDatabase() {
       sender TEXT,
       body TEXT,
       created_at INTEGER,
+      audio_url TEXT,
+      audio_mime TEXT,
+      audio_duration REAL,
+      quoted_body TEXT,
       FOREIGN KEY(conversation_id) REFERENCES conversations(id)
     );`);
+  await ensureColumn('messages', 'audio_url', 'TEXT');
+  await ensureColumn('messages', 'audio_mime', 'TEXT');
+  await ensureColumn('messages', 'audio_duration', 'REAL');
+  await ensureColumn('messages', 'quoted_body', 'TEXT');
 
   await run(`CREATE TABLE IF NOT EXISTS user_settings (
       id TEXT PRIMARY KEY,
@@ -268,16 +276,17 @@ export async function getConversationDetail(conversationId) {
 
 export async function getMessages(conversationId) {
   const rows = await getAll(
-    'SELECT id, sender, body, created_at as createdAt FROM messages WHERE conversation_id = ? ORDER BY created_at ASC;',
+    'SELECT id, sender, body, created_at as createdAt, audio_url as audioUrl, audio_mime as audioMime, audio_duration as audioDuration, quoted_body as quotedBody FROM messages WHERE conversation_id = ? ORDER BY created_at ASC;',
     [conversationId]
   );
   return rows;
 }
 
-export async function addMessage(conversationId, sender, body, createdAt = now()) {
+export async function addMessage(conversationId, sender, body, createdAt = now(), options = {}) {
+  const { quotedBody = null } = options || {};
   const insertResult = await run(
-    'INSERT INTO messages (conversation_id, sender, body, created_at) VALUES (?, ?, ?, ?);',
-    [conversationId, sender, body, createdAt]
+    'INSERT INTO messages (conversation_id, sender, body, created_at, quoted_body) VALUES (?, ?, ?, ?, ?);',
+    [conversationId, sender, body, createdAt, quotedBody]
   );
   await run('UPDATE conversations SET updated_at = ? WHERE id = ?;', [createdAt, conversationId]);
 
@@ -287,7 +296,22 @@ export async function addMessage(conversationId, sender, body, createdAt = now()
     sender,
     body,
     createdAt,
+    audioUrl: null,
+    audioMime: null,
+    audioDuration: null,
+    quotedBody,
   };
+}
+
+export async function deleteMessage(messageId) {
+  await run('DELETE FROM messages WHERE id = ?;', [messageId]);
+}
+
+export async function saveMessageAudio(messageId, { audioUrl, audioMime, audioDuration }) {
+  await run(
+    'UPDATE messages SET audio_url = ?, audio_mime = ?, audio_duration = ? WHERE id = ?;',
+    [audioUrl ?? null, audioMime ?? null, audioDuration ?? null, messageId]
+  );
 }
 
 export async function advanceScriptCursor(conversationId, nextCursor) {

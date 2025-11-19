@@ -3,11 +3,13 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   FlatList,
   Image,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -16,9 +18,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { Audio } from 'expo-av';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addMessage, getConversationDetail, getMessages, getRoleSettings } from '../storage/db';
+import { addMessage, getConversationDetail, getMessages, getRoleSettings, saveMessageAudio, deleteMessage } from '../storage/db';
 import { generateAiReply } from '../services/ai';
+import { synthesizeQwenTts } from '../services/tts';
 import { getRoleImage } from '../data/images';
 
 export default function ConversationScreen({ navigation, route }) {
@@ -31,15 +36,32 @@ export default function ConversationScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [ttsLoadingMessageId, setTtsLoadingMessageId] = useState(null);
+  const [playingMessageId, setPlayingMessageId] = useState(null);
   const [roleConfig, setRoleConfig] = useState(null);
+  const [actionMenuVisible, setActionMenuVisible] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [quotePreview, setQuotePreview] = useState(null);
+  const [quoteSource, setQuoteSource] = useState(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState(null);
   const listRef = useRef(null);
   const messagesRef = useRef([]);
   const greetingSentRef = useRef(false);
   const prevIsTypingRef = useRef(false);
+  const soundRef = useRef(null);
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -173,8 +195,13 @@ export default function ConversationScreen({ navigation, route }) {
     }
     const content = inputValue.trim();
     setInputValue('');
+    const quotedBody = quoteSource || null;
+    setQuotePreview(null);
+    setQuoteSource(null);
     const createdAt = Date.now();
-    const newMessage = await addMessage(conversation.id, 'user', content, createdAt);
+    const newMessage = await addMessage(conversation.id, 'user', content, createdAt, {
+      quotedBody,
+    });
     const nextHistory = [...messagesRef.current, newMessage];
     setMessages(nextHistory);
     messagesRef.current = nextHistory;
@@ -253,25 +280,218 @@ export default function ConversationScreen({ navigation, route }) {
     );
   };
 
+  const handlePlayTts = useCallback(
+    async (message) => {
+      if (!message || !message.body) return;
+
+      try {
+        // 如果正在播放同一条消息，则停止播放
+        if (playingMessageId === message.id && soundRef.current) {
+          await soundRef.current.stopAsync();
+          await soundRef.current.setPositionAsync(0);
+          setPlayingMessageId(null);
+          return;
+        }
+
+        setTtsLoadingMessageId(message.id);
+
+        if (soundRef.current) {
+          await soundRef.current.unloadAsync();
+          soundRef.current = null;
+        }
+
+        // 优先使用已缓存的音频 URL，避免重复请求 TTS
+        let audioUrl = message.audioUrl;
+        let audioMime = message.audioMime || null;
+        let audioDuration = message.audioDuration || null;
+
+        if (!audioUrl) {
+          const tts = await synthesizeQwenTts({ text: message.body });
+          if (!tts || !tts.audioUrl) {
+            setTtsLoadingMessageId(null);
+            Alert.alert('语音生成失败', '未能从 TTS 接口获取音频。');
+            return;
+          }
+
+          audioUrl = tts.audioUrl;
+          audioMime = tts.mimeType || null;
+          audioDuration = tts.durationSeconds || null;
+
+          // 写入本地 DB，后续播放直接复用
+          try {
+            await saveMessageAudio(message.id, {
+              audioUrl,
+              audioMime,
+              audioDuration,
+            });
+          } catch (dbError) {
+            console.warn('[Conversation] 保存 TTS 音频到本地失败', dbError);
+          }
+
+          // 同步更新内存中的消息列表
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === message.id
+                ? { ...m, audioUrl, audioMime, audioDuration }
+                : m
+            )
+          );
+          messagesRef.current = messagesRef.current.map((m) =>
+            m.id === message.id
+              ? { ...m, audioUrl, audioMime, audioDuration }
+              : m
+          );
+        }
+
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: true }
+        );
+        soundRef.current = sound;
+        setPlayingMessageId(message.id);
+        setTtsLoadingMessageId(null);
+
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (!status.isLoaded) {
+            return;
+          }
+          if (!status.isPlaying) {
+            setPlayingMessageId((current) =>
+              current === message.id ? null : current
+            );
+          }
+        });
+      } catch (error) {
+        console.error('[Conversation] TTS 播放失败', error);
+        setTtsLoadingMessageId(null);
+        Alert.alert('语音播放失败', error?.message || '生成或播放语音时出错');
+      }
+    },
+    [playingMessageId]
+  );
+
+  const handleMessageLongPress = useCallback((message, event) => {
+    if (!message) return;
+    const { pageX, pageY } = event?.nativeEvent || {};
+    const { width } = Dimensions.get('window');
+    const menuWidth = 260;
+
+    let left = pageX ? pageX - menuWidth / 2 : (width - menuWidth) / 2;
+    left = Math.max(8, Math.min(left, width - menuWidth - 8));
+
+    // 菜单显示在气泡上方一点
+    const top = pageY ? Math.max(80, pageY - 60) : 120;
+
+    setActionMenuPosition({ top, left });
+    setSelectedMessage(message);
+    setActionMenuVisible(true);
+  }, []);
+
+  const closeActionMenu = useCallback(() => {
+    setActionMenuVisible(false);
+    setSelectedMessage(null);
+  }, []);
+
+  const handleCopyMessage = useCallback(async () => {
+    if (!selectedMessage || !selectedMessage.body) return;
+    try {
+      await Clipboard.setStringAsync(selectedMessage.body);
+    } catch (error) {
+      console.warn('[Conversation] 复制失败', error);
+    } finally {
+      closeActionMenu();
+    }
+  }, [selectedMessage, closeActionMenu]);
+
+  const handleForwardMessage = useCallback(async () => {
+    if (!selectedMessage || !selectedMessage.body) return;
+    try {
+      await Share.share({ message: selectedMessage.body });
+    } catch (error) {
+      console.warn('[Conversation] 转发失败', error);
+    } finally {
+      closeActionMenu();
+    }
+  }, [selectedMessage, closeActionMenu]);
+
+  const handleDeleteMessage = useCallback(async () => {
+    if (!selectedMessage) return;
+    try {
+      await deleteMessage(selectedMessage.id);
+      setMessages((prev) => prev.filter((m) => m.id !== selectedMessage.id));
+      messagesRef.current = messagesRef.current.filter((m) => m.id !== selectedMessage.id);
+    } catch (error) {
+      console.warn('[Conversation] 删除消息失败', error);
+    } finally {
+      closeActionMenu();
+    }
+  }, [selectedMessage, closeActionMenu]);
+
+  const handleQuoteMessage = useCallback(() => {
+    if (!selectedMessage || !selectedMessage.body) return;
+    const snippet =
+      selectedMessage.body.length > 40
+        ? `${selectedMessage.body.slice(0, 40)}…`
+        : selectedMessage.body;
+    setQuotePreview(snippet);
+    setQuoteSource(selectedMessage.body);
+    closeActionMenu();
+  }, [selectedMessage, closeActionMenu]);
+
+  const handlePlayFromMenu = useCallback(() => {
+    if (!selectedMessage) return;
+    handlePlayTts(selectedMessage);
+    closeActionMenu();
+  }, [selectedMessage, handlePlayTts, closeActionMenu]);
+
   const renderMessage = ({ item }) => {
     const isUser = item.sender === 'user';
+    const bodyText = (item.body || '').replace(/\r/g, '').replace(/\n+/g, ' ');
+    const quotedText = (item.quotedBody || '').replace(/\r/g, '').replace(/\n+/g, ' ');
     return (
       <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
         {!isUser && (
           <Image source={getRoleImage(role?.id, 'avatar')} style={styles.messageAvatar} />
         )}
-        <View
-          style={[
-            styles.bubble,
-            isUser ? styles.bubbleUser : styles.bubbleAI,
-          ]}
-        >
-          <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-            {item.body || ''}
-          </Text>
-          {isUser && (
-            <Ionicons name="heart" color="#f093a4" size={16} style={styles.bubbleHeart} />
-          )}
+        {isUser && <View style={styles.messageAvatarPlaceholder} />}
+        <View style={styles.messageContent}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onLongPress={(event) => handleMessageLongPress(item, event)}
+            delayLongPress={300}
+          >
+            <View
+              style={[
+                styles.bubble,
+                isUser ? styles.bubbleUser : styles.bubbleAI,
+              ]}
+            >
+              {isUser ? (
+                <>
+                  {quotedText ? (
+                    <View style={styles.messageQuoteBubble}>
+                      <Text style={styles.messageQuoteText}>{quotedText}</Text>
+                    </View>
+                  ) : null}
+                  <Text style={[styles.bubbleText, styles.bubbleTextUser]}>
+                    {bodyText}
+                  </Text>
+                  <Ionicons name="heart" color="#f093a4" size={16} style={styles.bubbleHeart} />
+                </>
+              ) : (
+                <>
+                  {quotedText ? (
+                    <View style={styles.messageQuoteBubble}>
+                      <Text style={styles.messageQuoteText}>{quotedText}</Text>
+                    </View>
+                  ) : null}
+                  <Text style={styles.bubbleText}>
+                    {bodyText}
+                  </Text>
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -294,11 +514,7 @@ export default function ConversationScreen({ navigation, route }) {
   const listData = isTyping ? [...messages, { type: 'typing', id: 'typing-indicator' }] : messages;
 
   return (
-    <ImageBackground
-      source={backgroundImage}
-      style={styles.backgroundImage}
-      imageStyle={styles.backgroundImageStyle}
-    >
+    <ImageBackground source={backgroundImage} style={styles.backgroundImage} imageStyle={styles.backgroundImageStyle}>
       <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -372,6 +588,52 @@ export default function ConversationScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+
+        {quotePreview ? (
+          <View style={styles.quotePreview}>
+            <Text style={styles.quotePreviewLabel}>引用</Text>
+            <Text style={styles.quotePreviewText}>{quotePreview}</Text>
+          </View>
+        ) : null}
+
+        {actionMenuVisible && selectedMessage && actionMenuPosition && (
+          <View style={styles.actionMenuOverlay} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.actionMenuBackdrop}
+              activeOpacity={1}
+              onPress={closeActionMenu}
+            />
+            <View
+              style={[
+                styles.actionMenuContainer,
+                { top: actionMenuPosition.top, left: actionMenuPosition.left, width: 260 },
+              ]}
+            >
+              <View style={styles.actionMenuRow}>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handleCopyMessage}>
+                  <Ionicons name="copy-outline" size={20} color="#333" />
+                  <Text style={styles.actionMenuText}>复制</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handleForwardMessage}>
+                  <Ionicons name="arrow-redo-outline" size={20} color="#333" />
+                  <Text style={styles.actionMenuText}>转发</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handleQuoteMessage}>
+                  <Ionicons name="chatbox-ellipses-outline" size={20} color="#333" />
+                  <Text style={styles.actionMenuText}>引用</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handlePlayFromMenu}>
+                  <Ionicons name="volume-high-outline" size={20} color="#333" />
+                  <Text style={styles.actionMenuText}>播放</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handleDeleteMessage}>
+                  <Ionicons name="trash-outline" size={20} color="#e55b73" />
+                  <Text style={[styles.actionMenuText, { color: '#e55b73' }]}>删除</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     </ImageBackground>
   );
@@ -458,11 +720,22 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     marginRight: 10,
   },
+  messageAvatarPlaceholder: {
+    width: 34,
+    height: 34,
+    marginRight: 10,
+    opacity: 0,
+  },
+  messageContent: {
+    flexShrink: 1,
+    flexGrow: 0,
+  },
   bubble: {
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 18,
-    maxWidth: '75%',
+    maxWidth: '100%',
+    flexShrink: 1,
   },
   bubbleAI: {
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
@@ -486,6 +759,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: -18,
     bottom: -6,
+  },
+  messageQuoteBubble: {
+    marginBottom: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(244, 244, 244, 0.95)',
+  },
+  messageQuoteText: {
+    fontSize: 12,
+    color: '#888',
   },
   typingDotsContainer: {
     flexDirection: 'row',
@@ -556,5 +840,58 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     color: '#f093a4',
     fontSize: 12,
+  },
+  actionMenuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-start',
+  },
+  actionMenuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  actionMenuContainer: {
+    position: 'absolute',
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+  },
+  actionMenuRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  actionMenuItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  actionMenuText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#333',
+  },
+  quotePreview: {
+    marginHorizontal: 8,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  quotePreviewLabel: {
+    fontSize: 11,
+    color: '#f093a4',
+    marginBottom: 2,
+  },
+  quotePreviewText: {
+    fontSize: 12,
+    color: '#555',
   },
 });

@@ -28,7 +28,9 @@ function buildMessagePayload(history) {
   const selected = history.slice(-MAX_HISTORY);
   return selected.map((msg) => ({
     role: msg.sender === 'user' ? 'user' : 'assistant',
-    content: msg.body,
+    content: msg.quotedBody
+      ? `【引用】${msg.quotedBody}\n\n${msg.body}`
+      : msg.body,
   }));
 }
 
