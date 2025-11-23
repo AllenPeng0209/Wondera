@@ -46,7 +46,7 @@ function MainTabs() {
         tabBarIcon: ({ color, size }) => {
           const iconMap = {
             Messages: 'chatbubble-ellipses-outline',
-            Discover: 'heart-outline',
+            Discover: 'globe-outline',
             Profile: 'person-circle-outline',
           };
           return <Ionicons name={iconMap[route.name]} color={color} size={size} />;
@@ -58,7 +58,7 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Messages" component={ChatListScreen} options={{ title: '消息' }} />
-      <Tab.Screen name="Discover" component={DiscoverScreen} options={{ title: '发现' }} />
+      <Tab.Screen name="Discover" component={DiscoverScreen} options={{ title: '外教' }} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: '我的' }} />
     </Tab.Navigator>
   );

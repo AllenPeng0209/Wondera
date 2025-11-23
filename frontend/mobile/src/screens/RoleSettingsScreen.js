@@ -181,10 +181,10 @@ export default function RoleSettingsScreen({ navigation, route }) {
           />
           <View style={styles.separator} />
           <ToggleRow
-            label="允许拍一拍"
+            label="允许练习提醒"
             value={settings.allowKnock}
             onValueChange={(value) => setSettings((prev) => ({ ...prev, allowKnock: value }))}
-            description="开启后角色可以发送拍一拍进行亲密互动"
+            description="开启后外教可以发送消息提醒你练习对话"
           />
           <View style={styles.separator} />
           <CounterRow

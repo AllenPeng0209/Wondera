@@ -69,7 +69,7 @@ export default function DiscoverScreen({ navigation }) {
         <View style={styles.emptyState}>
           <Ionicons name="cloud-offline-outline" size={52} color="#f093a4" />
           <Text style={styles.emptyTitle}>暂时没有更多推荐</Text>
-          <Text style={styles.emptySubtitle}>稍后再来,新的心动角色正在登场。</Text>
+          <Text style={styles.emptySubtitle}>稍后再来,探索新的语言伙伴。</Text>
         </View>
       </SafeAreaView>
     );
@@ -79,12 +79,12 @@ export default function DiscoverScreen({ navigation }) {
     <SafeAreaView style={[styles.container, { paddingTop: Math.max(insets.top - 8, 8) }]}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerLabel}>发现</Text>
-          <Text style={styles.headerSubtitle}>这些人，想和你分享秘密</Text>
+          <Text style={styles.headerLabel}>外教库</Text>
+          <Text style={styles.headerSubtitle}>精选AI外教，助你练习口语</Text>
         </View>
         <TouchableOpacity style={styles.likedCount}>
-          <Ionicons name="sparkles-outline" size={18} color="#f093a4" />
-          <Text style={styles.likedText}>{likedCount || 0}</Text>
+          <Ionicons name="people-outline" size={18} color="#4A90E2" />
+          <Text style={styles.likedText}>{likedCount || 0} 位学员</Text>
         </TouchableOpacity>
       </View>
 
@@ -138,17 +138,16 @@ function Card({ card, navigation, cardHeight }) {
       <TouchableOpacity
         activeOpacity={0.95}
         onPress={handlePress}
+        style={{ width: '100%', height: '100%' }}
       >
         <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
-          <Image source={imageSource} style={styles.cardImage} />
+          <Image source={imageSource} style={styles.cardImage} resizeMode="cover" />
 
           {/* Gradient overlay for text readability */}
-          <View style={styles.gradientWrapper}>
-            <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.7)']}
-              style={styles.gradientOverlay}
-            />
-          </View>
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.7)']}
+            style={styles.gradientOverlay}
+          />
 
           <View style={styles.cardOverlay}>
             <Text style={styles.cardName}>{card.name || ''}</Text>
@@ -216,11 +215,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 18,
-    backgroundColor: '#ffe0ea',
+    backgroundColor: '#E3F2FD',
   },
   likedText: {
     marginLeft: 4,
-    color: '#f093a4',
+    color: '#4A90E2',
     fontWeight: '600',
   },
   listContent: {
@@ -235,17 +234,10 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 28,
     overflow: 'hidden',
-    backgroundColor: '#fff',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
   },
   cardImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 28,
   },
   gradientOverlay: {
     position: 'absolute',
@@ -253,7 +245,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: '50%',
-    borderRadius: 28,
   },
   cardOverlay: {
     position: 'absolute',

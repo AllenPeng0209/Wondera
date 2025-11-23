@@ -14,12 +14,12 @@ import { createRoleWithConversation } from '../storage/db';
 
 export default function CreateRoleScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const [name, setName] = useState('心动新角色');
-  const [title, setTitle] = useState('浪漫陪伴');
-  const [persona, setPersona] = useState('温柔体贴，擅长聆听与共鸣。');
-  const [greeting, setGreeting] = useState('嗨，很高兴遇见你，从现在开始由我陪你。');
-  const [mood, setMood] = useState('想你');
-  const [scriptLines, setScriptLines] = useState('记得提醒他早点休息\n多夸夸他，给他安全感');
+  const [name, setName] = useState('新的语言伙伴');
+  const [title, setTitle] = useState('英语口语教练');
+  const [persona, setPersona] = useState('友好耐心，擅长引导对话和纠正语言错误。');
+  const [greeting, setGreeting] = useState('Hi! Nice to meet you! I\'m here to help you practice English.');
+  const [mood, setMood] = useState('友好');
+  const [scriptLines, setScriptLines] = useState('鼓励用户多说英语\n纠正常见的语法错误');
 
   const handleCreate = async () => {
     if (!name.trim()) {

@@ -51,8 +51,8 @@ export default function PreferenceSettingsScreen({ navigation }) {
           />
           <View style={styles.separator} />
           <PreferenceToggle
-            label="沉浸式角色互动"
-            description="角色在主界面发起互动，也可主动联系好友传递心动"
+            label="沉浸式学习互动"
+            description="外教在主界面发起对话，也可主动发送学习提醒"
             value={Boolean(settings.immersive_mode)}
             onToggle={(val) => handleToggle('immersive_mode', val)}
           />

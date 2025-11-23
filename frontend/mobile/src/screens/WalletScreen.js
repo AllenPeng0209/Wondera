@@ -29,7 +29,7 @@ export default function WalletScreen({ navigation }) {
     const newBalance = (settings.currency_balance || 0) + selected.amount;
     await updateUserSettings({ currency_balance: newBalance });
     setSettings((prev) => ({ ...prev, currency_balance: newBalance }));
-    Alert.alert('充值成功', `获得 ${selected.amount} 心动币`);
+    Alert.alert('充值成功', `获得 ${selected.amount} 学习币`);
   };
 
   if (!settings) {
@@ -46,7 +46,7 @@ export default function WalletScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={22} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>心动币钱包</Text>
+        <Text style={styles.headerTitle}>学习币钱包</Text>
         <View style={{ width: 34 }} />
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -63,7 +63,7 @@ export default function WalletScreen({ navigation }) {
               onPress={() => setSelected(pkg)}
             >
               <Text style={styles.packageAmount}>{pkg.amount} 枚</Text>
-              <Text style={styles.packageBonus}>首充多赠 {pkg.amount / 6} 心动币</Text>
+              <Text style={styles.packageBonus}>首充多赠 {pkg.amount / 6} 学习币</Text>
               <Text style={styles.packagePrice}>¥{pkg.price.toFixed(2)}</Text>
             </TouchableOpacity>
           ))}

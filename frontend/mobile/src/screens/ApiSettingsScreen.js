@@ -82,7 +82,7 @@ export default function ApiSettingsScreen({ navigation }) {
           <Text style={styles.label}>聊天服务调用模式</Text>
           <View style={styles.segmentGroup}>
             {[
-              { id: 'wallet', label: '使用心动币额度' },
+              { id: 'wallet', label: '使用学习币额度' },
               { id: 'api', label: '使用自有 API' },
             ].map((mode) => (
               <TouchableOpacity

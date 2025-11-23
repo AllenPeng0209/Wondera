@@ -366,13 +366,13 @@ export async function createRoleWithConversation(data) {
     'INSERT INTO roles (id, name, avatar, persona, mood, greeting, script, title, city, description, tags, hero_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
     [
       roleId,
-      data.name || '新的心动角色',
+      data.name || '新的语言伙伴',
       data.avatar || 'https://i.pravatar.cc/120?img=15',
-      data.persona || '一个贴心的AI伙伴',
-      data.mood || '心动',
-      data.greeting || '从现在开始，由我来守护你。',
+      data.persona || '一个友好的AI语言助手',
+      data.mood || '友好',
+      data.greeting || 'Hello! Nice to meet you. Let\'s practice English together!',
       JSON.stringify(scriptLines),
-      data.title || '心动嘉宾',
+      data.title || '语言助手',
       data.city || '云端',
       data.description || data.persona || '',
       JSON.stringify(data.tags || []),
@@ -382,12 +382,12 @@ export async function createRoleWithConversation(data) {
 
   await run(
     'INSERT INTO conversations (id, role_id, title, updated_at, script_cursor) VALUES (?, ?, ?, ?, 0);',
-    [conversationId, roleId, data.name || '新的心动角色', now()]
+    [conversationId, roleId, data.name || '新的语言伙伴', now()]
   );
 
   await ensureRoleSettings(roleId);
   await updateRoleSettings(roleId, {
-    nickname_override: data.name || '新的心动角色',
+    nickname_override: data.name || '新的语言伙伴',
     persona_note: data.persona || '',
   });
 
@@ -429,4 +429,42 @@ export async function getConversationByRoleId(roleId) {
     [roleId]
   );
   return record?.id || null;
+}
+
+// Update role UI information from seeds
+export async function updateRolesUIFromSeeds() {
+  for (const role of roleSeeds) {
+    await run(
+      `UPDATE roles SET
+        title = ?,
+        city = ?,
+        description = ?,
+        tags = ?,
+        mood = ?,
+        greeting = ?
+      WHERE id = ?;`,
+      [
+        role.title,
+        role.city,
+        role.description,
+        JSON.stringify(role.tags || []),
+        role.mood,
+        role.greeting,
+        role.id,
+      ]
+    );
+
+    // Also update the initial message greeting
+    await run(
+      `UPDATE messages SET body = ?
+       WHERE conversation_id IN (SELECT id FROM conversations WHERE role_id = ?)
+       AND sender = 'ai'
+       AND created_at = (
+         SELECT MIN(created_at) FROM messages
+         WHERE conversation_id IN (SELECT id FROM conversations WHERE role_id = ?)
+         AND sender = 'ai'
+       );`,
+      [role.greeting, role.id, role.id]
+    );
+  }
 }

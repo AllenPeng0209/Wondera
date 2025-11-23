@@ -270,7 +270,7 @@ export default function ConversationScreen({ navigation, route }) {
             {item.body || ''}
           </Text>
           {isUser && (
-            <Ionicons name="heart" color="#f093a4" size={16} style={styles.bubbleHeart} />
+            <View style={styles.bubbleAvatar} />
           )}
         </View>
       </View>
@@ -482,10 +482,14 @@ const styles = StyleSheet.create({
     color: '#d46b84',
     fontWeight: '500',
   },
-  bubbleHeart: {
+  bubbleAvatar: {
     position: 'absolute',
     right: -18,
     bottom: -6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#4A90E2',
   },
   typingDotsContainer: {
     flexDirection: 'row',
