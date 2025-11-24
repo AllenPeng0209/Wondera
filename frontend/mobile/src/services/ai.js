@@ -58,3 +58,45 @@ export async function generateAiReply({ conversation, role, history }) {
     return fallbackFromScript(conversation, role);
   }
 }
+
+export async function getWordCard(word) {
+  if (!word || !word.trim()) throw new Error('word is required');
+  const system = 'You are a bilingual English-Chinese word helper. Output concise JSON with translation, example, and an imagePrompt for illustration. Keep it short.';
+  const prompt = `Word: ${word}\nReturn JSON like {"translation":"简短中文义","example":"Short English example using the word","imagePrompt":"Short image description"}.`;
+  const raw = await sendBailianMessage([{ role: 'user', content: prompt }], { system, model: 'qwen-plus' });
+  try {
+    const jsonStart = raw.indexOf('{');
+    const jsonEnd = raw.lastIndexOf('}');
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+      const imgPrompt = parsed.imagePrompt || parsed.image_prompt || `A simple illustration of ${word}.`;
+      const query = encodeURIComponent(imgPrompt || word);
+      const imageUrls = [
+        `https://source.unsplash.com/featured/800x600/?${query}&sig=${Date.now()}`,
+        `https://source.unsplash.com/featured/800x600/?${encodeURIComponent(word)}&sig=${Date.now() + 1}`,
+        `https://loremflickr.com/800/600/${encodeURIComponent(word)}`,
+        `https://dummyimage.com/800x600/ffe1eb/333&text=${encodeURIComponent(word)}`,
+      ];
+      return {
+        translation: parsed.translation || `示例翻译：${word}`,
+        example: parsed.example || `Example: use ${word} in a sentence.`,
+        imagePrompt: imgPrompt,
+        imageUrl: imageUrls[0],
+        imageUrls,
+      };
+    }
+  } catch (e) {
+    console.warn('[AI] parse word card failed', e);
+  }
+  return {
+    translation: `示例翻译：${word}`,
+    example: `Example: use ${word} in a sentence.`,
+    imagePrompt: `A simple illustration of ${word}.`,
+    imageUrl: `https://source.unsplash.com/featured/800x600/?${encodeURIComponent(word)}&sig=${Date.now()}`,
+    imageUrls: [
+      `https://source.unsplash.com/featured/800x600/?${encodeURIComponent(word)}&sig=${Date.now()}`,
+      `https://loremflickr.com/800/600/${encodeURIComponent(word)}`,
+      `https://dummyimage.com/800x600/ffe1eb/333&text=${encodeURIComponent(word)}`,
+    ],
+  };
+}

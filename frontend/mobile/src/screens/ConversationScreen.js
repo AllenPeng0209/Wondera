@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,8 +21,15 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Audio } from 'expo-av';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addMessage, getConversationDetail, getMessages, getRoleSettings, saveMessageAudio, deleteMessage } from '../storage/db';
-import { generateAiReply } from '../services/ai';
+import {
+  addMessage,
+  getConversationDetail,
+  getMessages,
+  getRoleSettings,
+  saveMessageAudio,
+  deleteMessage,
+} from '../storage/db';
+import { generateAiReply, getWordCard } from '../services/ai';
 import { synthesizeQwenTts } from '../services/tts';
 import { getRoleImage } from '../data/images';
 
@@ -41,6 +48,12 @@ export default function ConversationScreen({ navigation, route }) {
   const [roleConfig, setRoleConfig] = useState(null);
   const [actionMenuVisible, setActionMenuVisible] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState(null);
+  const [selectedWord, setSelectedWord] = useState('');
+  const [wordSheetVisible, setWordSheetVisible] = useState(false);
+  const [wordSheetLoading, setWordSheetLoading] = useState(false);
+  const [wordDetails, setWordDetails] = useState(null);
+  const [wordImageError, setWordImageError] = useState(false);
+  const [wordImageIndex, setWordImageIndex] = useState(0);
   const [quotePreview, setQuotePreview] = useState(null);
   const [quoteSource, setQuoteSource] = useState(null);
   const [actionMenuPosition, setActionMenuPosition] = useState(null);
@@ -49,6 +62,24 @@ export default function ConversationScreen({ navigation, route }) {
   const greetingSentRef = useRef(false);
   const prevIsTypingRef = useRef(false);
   const soundRef = useRef(null);
+
+  const fetchWordDetails = useCallback(async (word) => {
+    if (!word) return;
+    try {
+      setWordSheetLoading(true);
+      const result = await getWordCard(word);
+      setWordDetails(result);
+    } catch (error) {
+      console.warn('[WordCard] fetch failed', error?.message || error);
+      setWordDetails({
+        translation: `示例翻译：${word}`,
+        example: `Example: use ${word} in a sentence.`,
+        imagePrompt: `A simple illustration of ${word}.`,
+      });
+    } finally {
+      setWordSheetLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -448,6 +479,38 @@ export default function ConversationScreen({ navigation, route }) {
     const isUser = item.sender === 'user';
     const bodyText = (item.body || '').replace(/\r/g, '').replace(/\n+/g, ' ');
     const quotedText = (item.quotedBody || '').replace(/\r/g, '').replace(/\n+/g, ' ');
+
+    const wordTokens = bodyText.split(/(\s+)/).filter((t) => t.length > 0);
+
+    const renderTokenizedText = () => (
+      <Text style={isUser ? [styles.bubbleText, styles.bubbleTextUser] : styles.bubbleText}>
+        {wordTokens.map((token, idx) => {
+          const isSpace = /^\s+$/.test(token);
+          if (isSpace) {
+            return <Text key={`space-${idx}`}>{token}</Text>;
+          }
+          const isSelected = selectedWord === token;
+          return (
+            <Text
+              key={`word-${idx}`}
+              onPress={() => setSelectedWord(token)}
+              onLongPress={() => {
+                setSelectedWord(token);
+                setWordDetails(null);
+                setWordImageError(false);
+                setWordImageIndex(0);
+                setWordSheetVisible(true);
+                fetchWordDetails(token);
+              }}
+              style={isSelected ? styles.selectedWord : null}
+            >
+              {token}
+            </Text>
+          );
+        })}
+      </Text>
+    );
+
     return (
       <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
         {!isUser && (
@@ -455,11 +518,12 @@ export default function ConversationScreen({ navigation, route }) {
         )}
         {isUser && <View style={styles.messageAvatarPlaceholder} />}
         <View style={styles.messageContent}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onLongPress={(event) => handleMessageLongPress(item, event)}
-            delayLongPress={300}
-          >
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onLongPress={(event) => handleMessageLongPress(item, event)}
+        delayLongPress={300}
+        onPress={() => setSelectedWord('')}
+      >
             <View
               style={[
                 styles.bubble,
@@ -473,9 +537,7 @@ export default function ConversationScreen({ navigation, route }) {
                       <Text style={styles.messageQuoteText}>{quotedText}</Text>
                     </View>
                   ) : null}
-                  <Text style={[styles.bubbleText, styles.bubbleTextUser]}>
-                    {bodyText}
-                  </Text>
+                  {renderTokenizedText()}
                   <Ionicons name="heart" color="#f093a4" size={16} style={styles.bubbleHeart} />
                 </>
               ) : (
@@ -485,9 +547,7 @@ export default function ConversationScreen({ navigation, route }) {
                       <Text style={styles.messageQuoteText}>{quotedText}</Text>
                     </View>
                   ) : null}
-                  <Text style={styles.bubbleText}>
-                    {bodyText}
-                  </Text>
+                  {renderTokenizedText()}
                 </>
               )}
             </View>
@@ -635,6 +695,56 @@ export default function ConversationScreen({ navigation, route }) {
             </View>
           </View>
         )}
+
+        {wordSheetVisible && (
+          <View style={styles.wordSheetOverlay} pointerEvents="box-none">
+            <TouchableOpacity style={styles.wordSheetBackdrop} activeOpacity={1} onPress={() => setWordSheetVisible(false)} />
+            <View style={styles.wordSheet}>
+              <View style={styles.wordSheetHeader}>
+                <Text style={styles.wordSheetTitle}>{selectedWord}</Text>
+                <TouchableOpacity onPress={() => setWordSheetVisible(false)}>
+                  <Ionicons name="close" size={22} color="#555" />
+                </TouchableOpacity>
+              </View>
+              {wordSheetLoading || !wordDetails ? (
+                <View style={styles.wordSheetLoadingRow}>
+                  <ActivityIndicator color="#f093a4" />
+                  <Text style={styles.wordSheetHint}>AI 正在生成词卡…</Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.wordSheetLabel}>翻译</Text>
+                  <Text style={styles.wordSheetBody}>{wordDetails.translation}</Text>
+                  <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>例句</Text>
+                  <Text style={styles.wordSheetBody}>{wordDetails.example}</Text>
+                  <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>图像提示</Text>
+                  {wordDetails.imageUrls && wordDetails.imageUrls[wordImageIndex] && !wordImageError ? (
+                    <Image
+                      source={{ uri: wordDetails.imageUrls[wordImageIndex] }}
+                      style={styles.wordSheetImage}
+                      resizeMode="cover"
+                      onError={() => {
+                        const nextIndex = wordImageIndex + 1;
+                        if (wordDetails.imageUrls[nextIndex]) {
+                          setWordImageIndex(nextIndex);
+                          setWordImageError(false);
+                        } else {
+                          setWordImageError(true);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <View style={[styles.wordSheetImage, { alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={styles.wordSheetHint}>图片加载失败/暂无图片</Text>
+                    </View>
+                  )}
+                  <Text style={styles.wordSheetBody}>{wordDetails.imagePrompt}</Text>
+                  <Text style={styles.wordSheetHint}>长按单词可打开此面板，点空白关闭。</Text>
+                </>
+              )}
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     </ImageBackground>
   );
@@ -755,6 +865,12 @@ const styles = StyleSheet.create({
   bubbleTextUser: {
     color: '#d46b84',
     fontWeight: '500',
+  },
+  selectedWord: {
+    backgroundColor: '#ffe1eb',
+    color: '#c24d72',
+    borderRadius: 4,
+    overflow: 'hidden',
   },
   bubbleHeart: {
     position: 'absolute',
@@ -877,6 +993,67 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
     color: '#333',
+  },
+  wordSheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+  },
+  wordSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  wordSheet: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -4 },
+  },
+  wordSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  wordSheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  wordSheetLabel: {
+    fontSize: 12,
+    color: '#c24d72',
+    fontWeight: '700',
+  },
+  wordSheetBody: {
+    fontSize: 14,
+    color: '#444',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  wordSheetHint: {
+    marginTop: 12,
+    fontSize: 12,
+    color: '#999',
+  },
+  wordSheetLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  wordSheetImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 12,
+    marginTop: 6,
+    marginBottom: 4,
+    backgroundColor: '#ffeef4',
   },
   quotePreview: {
     marginHorizontal: 8,
