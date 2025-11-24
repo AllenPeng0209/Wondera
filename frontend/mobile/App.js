@@ -16,6 +16,8 @@ import CreateRoleScreen from './src/screens/CreateRoleScreen';
 import WalletScreen from './src/screens/WalletScreen';
 import ApiSettingsScreen from './src/screens/ApiSettingsScreen';
 import PreferenceSettingsScreen from './src/screens/PreferenceSettingsScreen';
+
+import DailyTheaterScreen from './src/screens/DailyTheaterScreen';
 import { initDatabase } from './src/storage/db';
 import { requestNotificationPermissions } from './src/services/notifications';
 import { registerAiKnockBackgroundTask, runAiKnockOnce } from './src/background/aiKnockTask';
@@ -48,7 +50,7 @@ function MainTabs() {
         tabBarIcon: ({ color, size }) => {
           const iconMap = {
             Messages: 'chatbubble-ellipses-outline',
-            Discover: 'heart-outline',
+            Theater: 'film-outline',
             Profile: 'person-circle-outline',
           };
           return <Ionicons name={iconMap[route.name]} color={color} size={size} />;
@@ -60,7 +62,7 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Messages" component={ChatListScreen} options={{ title: '消息' }} />
-      <Tab.Screen name="Discover" component={DiscoverScreen} options={{ title: '发现' }} />
+      <Tab.Screen name="Theater" component={DailyTheaterScreen} options={{ title: '剧场' }} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: '我的' }} />
     </Tab.Navigator>
   );
@@ -109,6 +111,7 @@ export default function App() {
         <NavigationContainer theme={navTheme}>
           <Stack.Navigator screenOptions={{ headerShown: false }}>
             <Stack.Screen name="Home" component={MainTabs} />
+          <Stack.Screen name="Discover" component={DiscoverScreen} />
           <Stack.Screen name="Conversation" component={ConversationScreen} />
           <Stack.Screen name="RoleSettings" component={RoleSettingsScreen} />
           <Stack.Screen name="CreateRole" component={CreateRoleScreen} />
