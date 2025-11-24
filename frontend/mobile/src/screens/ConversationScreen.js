@@ -285,8 +285,6 @@ export default function ConversationScreen({ navigation, route }) {
     );
   }
 
-  const topPadding = Math.max(insets.top - 8, 8);
-
   // Use role's hero image as chat background
   const backgroundImage = getRoleImage(role?.id, 'heroImage') || getRoleImage(role?.id, 'avatar');
 
@@ -299,7 +297,7 @@ export default function ConversationScreen({ navigation, route }) {
       style={styles.backgroundImage}
       imageStyle={styles.backgroundImageStyle}
     >
-      <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}>
+      <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={22} color="#333" />
@@ -312,6 +310,18 @@ export default function ConversationScreen({ navigation, route }) {
               <Text style={styles.moodText}>{role.mood || '想你'}</Text>
             </View>
           </View>
+          <TouchableOpacity
+            style={styles.callButton}
+            onPress={() => {
+              navigation.navigate('VoiceCall', {
+                characterId: role.id,
+                characterName: role.name,
+                characterAvatar: getRoleImage(role.id, 'avatar'),
+              });
+            }}
+          >
+            <Ionicons name="call-outline" size={18} color="#f093a4" />
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.settingsButton}
             onPress={() =>
@@ -388,7 +398,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 0,
   },
   loadingContainer: {
     flex: 1,
@@ -537,6 +547,16 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.6,
+  },
+  callButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#f1d7de',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
   settingsButton: {
     width: 34,

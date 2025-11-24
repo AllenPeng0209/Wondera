@@ -16,6 +16,7 @@ import CreateRoleScreen from './src/screens/CreateRoleScreen';
 import WalletScreen from './src/screens/WalletScreen';
 import ApiSettingsScreen from './src/screens/ApiSettingsScreen';
 import PreferenceSettingsScreen from './src/screens/PreferenceSettingsScreen';
+import VoiceCallScreen from './src/screens/VoiceCallScreen';
 import { initDatabase } from './src/storage/db';
 
 const Stack = createNativeStackNavigator();
@@ -93,14 +94,21 @@ export default function App() {
         <NavigationContainer theme={navTheme}>
           <Stack.Navigator screenOptions={{ headerShown: false }}>
             <Stack.Screen name="Home" component={MainTabs} />
-          <Stack.Screen name="Conversation" component={ConversationScreen} />
-          <Stack.Screen name="RoleSettings" component={RoleSettingsScreen} />
-          <Stack.Screen name="CreateRole" component={CreateRoleScreen} />
-          <Stack.Screen name="Wallet" component={WalletScreen} />
-          <Stack.Screen name="ApiSettings" component={ApiSettingsScreen} />
-          <Stack.Screen name="PreferenceSettings" component={PreferenceSettingsScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
+            <Stack.Screen name="Conversation" component={ConversationScreen} />
+            <Stack.Screen name="RoleSettings" component={RoleSettingsScreen} />
+            <Stack.Screen name="CreateRole" component={CreateRoleScreen} />
+            <Stack.Screen name="Wallet" component={WalletScreen} />
+            <Stack.Screen name="ApiSettings" component={ApiSettingsScreen} />
+            <Stack.Screen name="PreferenceSettings" component={PreferenceSettingsScreen} />
+            <Stack.Screen
+              name="VoiceCall"
+              component={VoiceCallScreen}
+              options={{
+                headerShown: false,
+              }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
