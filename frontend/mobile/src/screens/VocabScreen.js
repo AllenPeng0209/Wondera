@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import {
   addVocabItem,
   deleteVocabItem,
   getDueVocabItems,
+  getVocabTimeline,
   getVocabStats,
   recordVocabReview,
   updateVocabItem,
@@ -42,6 +43,28 @@ export default function VocabScreen() {
   const [initialDue, setInitialDue] = useState(0);
   const [audioLoading, setAudioLoading] = useState(false);
   const [playingId, setPlayingId] = useState(null);
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyData, setHistoryData] = useState([]);
+
+  const formatDate = (ts) => {
+    if (!ts) return '--';
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = `${d.getMonth() + 1}`.padStart(2, '0');
+    const day = `${d.getDate()}`.padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const groupedHistory = useMemo(() => {
+    const map = historyData.reduce((acc, item) => {
+      const key = formatDate(item.created_at);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {});
+    return Object.keys(map).map((date) => ({ date, items: map[date] }));
+  }, [historyData]);
   const soundRef = useRef(null);
 
   const loadData = useCallback(async () => {
@@ -181,6 +204,18 @@ export default function VocabScreen() {
 
   const topPadding = Math.max(insets.top - 8, 8);
 
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const rows = await getVocabTimeline(300);
+      setHistoryData(rows);
+    } catch (e) {
+      console.warn('[Vocab] load history failed', e);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   return (
     <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}> 
       <View style={styles.header}>
@@ -193,7 +228,15 @@ export default function VocabScreen() {
       <View style={styles.statsRow}>
         <StatChip label="待复习" value={stats.due} color="#f093a4" />
         <StatChip label="已掌握" value={stats.mastered} color="#6fcf97" />
-        <StatChip label="总词汇" value={stats.total} color="#8f8f8f" />
+        <StatChip
+          label="总词库"
+          value={stats.total}
+          color="#8f8f8f"
+          onPress={() => {
+            setHistoryVisible((v) => !v);
+            if (!historyVisible) loadHistory();
+          }}
+        />
       </View>
 
       <View style={styles.progressWrapper}>
@@ -204,6 +247,44 @@ export default function VocabScreen() {
           {Math.max(initialDue - remaining, 0)}/{initialDue || 0} 已完成
         </Text>
       </View>
+
+      {historyVisible && (
+        <View style={styles.historyWrapper}>
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyTitle}>总词库 · 时间轴</Text>
+            <TouchableOpacity style={styles.historyRefresh} onPress={loadHistory}>
+              {historyLoading ? (
+                <ActivityIndicator color="#f093a4" size="small" />
+              ) : (
+                <Ionicons name="refresh" size={18} color="#f093a4" />
+              )}
+            </TouchableOpacity>
+          </View>
+          {historyLoading ? (
+            <ActivityIndicator color="#f093a4" style={{ marginTop: 12 }} />
+          ) : (
+            <View style={styles.historySectionList}>
+              {groupedHistory.map((section) => (
+                <View key={section.date} style={styles.historySection}>
+                  <View style={styles.historySectionHeader}>
+                    <Text style={styles.historySectionDate}>{section.date}</Text>
+                    <Text style={styles.historySectionCount}>{section.items.length} 词</Text>
+                  </View>
+                  <View style={styles.historyGrid}>
+                    {section.items.map((item) => (
+                      <View key={item.id} style={styles.historyCard}>
+                        <Text style={styles.historyTerm}>{item.term}</Text>
+                        <Text style={styles.historyDef} numberOfLines={2}>{item.definition || '—'}</Text>
+                        <Text style={styles.historyDate}>{formatDate(item.created_at)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.loadingBox}>
@@ -346,12 +427,16 @@ export default function VocabScreen() {
   );
 }
 
-function StatChip({ label, value, color }) {
+function StatChip({ label, value, color, onPress }) {
   return (
-    <View style={[styles.statChip, { backgroundColor: `${color}15`, borderColor: `${color}55` }]}> 
+    <TouchableOpacity
+      style={[styles.statChip, { backgroundColor: `${color}15`, borderColor: `${color}55` }]}
+      activeOpacity={onPress ? 0.8 : 1}
+      onPress={onPress}
+    >
       <Text style={[styles.statValue, { color }]}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -425,6 +510,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   statValue: {
     fontSize: 18,
@@ -442,6 +528,84 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  historyWrapper: {
+    marginHorizontal: 12,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  historyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+  },
+  historyRefresh: {
+    padding: 6,
+  },
+  historySectionList: {
+    marginTop: 8,
+  },
+  historySection: {
+    marginBottom: 12,
+  },
+  historySectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  historySectionDate: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#b24f75',
+  },
+  historySectionCount: {
+    fontSize: 12,
+    color: '#8f8f8f',
+  },
+  historyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 6,
+    gap: 10,
+  },
+  historyCard: {
+    width: '48%',
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#f2e6ef',
+    shadowColor: '#cda7c1',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  historyTerm: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#c24d72',
+  },
+  historyDef: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#555',
+  },
+  historyDate: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#8f8f8f',
   },
   card: {
     margin: 16,

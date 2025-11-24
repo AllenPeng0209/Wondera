@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -11,6 +11,7 @@ import {
   getDailyTasks,
   getUserSettings,
 } from '../storage/db';
+import { getRoleImage } from '../data/images';
 
 const formatDateKey = () => {
   const date = new Date();
@@ -86,8 +87,20 @@ export default function DailyTheaterScreen({ navigation }) {
 
   const renderItem = ({ item, index }) => {
     const completed = Boolean(item.completed);
+    const hero = getRoleImage(item.target_role_id, 'heroImage') || getRoleImage(item.target_role_id, 'avatar');
     return (
       <View style={styles.card}>
+        {hero ? (
+          <View style={styles.cardHeroWrapper}>
+            <Image source={hero} style={styles.cardHero} />
+            <View style={styles.cardHeroOverlay} />
+            <View style={styles.cardHeroText}>
+              <Text style={styles.cardHeroTitle}>{item.scene || '恋爱剧场'}</Text>
+              <Text style={styles.cardHeroSubtitle}>{item.title || ''}</Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.cardHeader}>
           <View style={styles.scenePill}>
             <Ionicons name="heart" size={14} color="#f093a4" />
@@ -95,21 +108,21 @@ export default function DailyTheaterScreen({ navigation }) {
           </View>
           <Text style={styles.dayLabel}>Day {index + 1}</Text>
         </View>
+        <View style={styles.cardBody}>
+          <Text style={styles.title}>{item.title || ''}</Text>
+          <Text style={styles.description}>{item.description || ''}</Text>
 
-        <Text style={styles.title}>{item.title || ''}</Text>
-        <Text style={styles.description}>{item.description || ''}</Text>
-
-        <View style={styles.roleRow}>
-          <Ionicons name="person" size={14} color="#b38aa6" />
-          <Text style={styles.roleText}>角色：{roleNameMap[item.target_role_id] || '心动角色'}</Text>
-        </View>
-
-        {item.kickoff_prompt ? (
-          <View style={styles.promptBox}>
-            <Text style={styles.promptLabel}>开场白示例</Text>
-            <Text style={styles.promptText}>{item.kickoff_prompt}</Text>
+          <View style={styles.roleRow}>
+            <Ionicons name="person" size={14} color="#b38aa6" />
+            <Text style={styles.roleText}>角色：{roleNameMap[item.target_role_id] || '心动角色'}</Text>
           </View>
-        ) : null}
+
+          {item.kickoff_prompt ? (
+            <View style={styles.promptBox}>
+              <Text style={styles.promptLabel}>开场白示例</Text>
+              <Text style={styles.promptText}>{item.kickoff_prompt}</Text>
+            </View>
+          ) : null}
 
         <View style={styles.rewardRow}>
           <View style={styles.rewardPill}>
@@ -135,6 +148,7 @@ export default function DailyTheaterScreen({ navigation }) {
           </Text>
           {!completed && <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />}
         </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -220,18 +234,55 @@ const styles = StyleSheet.create({
   card: {
     width: 320,
     marginHorizontal: 8,
-    padding: 18,
+    padding: 0,
     borderRadius: 20,
     backgroundColor: '#fff',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
   },
+  cardHeroWrapper: {
+    height: 160,
+    position: 'relative',
+  },
+  cardHero: {
+    width: '100%',
+    height: '100%',
+  },
+  cardHeroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  cardHeroText: {
+    position: 'absolute',
+    left: 14,
+    bottom: 12,
+  },
+  cardHeroTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    opacity: 0.9,
+  },
+  cardHeroSubtitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 2,
+  },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 6,
+  },
+  cardBody: {
+    paddingHorizontal: 18,
+    paddingBottom: 14,
   },
   scenePill: {
     flexDirection: 'row',
@@ -251,13 +302,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   title: {
-    marginTop: 12,
+    marginTop: 2,
     fontSize: 20,
     fontWeight: '800',
     color: '#333',
   },
   description: {
-    marginTop: 8,
+    marginTop: 6,
     fontSize: 14,
     color: '#555',
     lineHeight: 20,
@@ -325,6 +376,8 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     marginTop: 16,
+    marginHorizontal: 0,
+    marginBottom: 16,
     paddingVertical: 12,
     borderRadius: 14,
     backgroundColor: '#f093a4',

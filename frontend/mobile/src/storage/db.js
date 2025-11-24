@@ -669,6 +669,10 @@ export async function addVocabItem(data, options = {}) {
   const shouldSchedule = options.schedule !== false;
   const nextReviewAt = shouldSchedule ? (data.next_review_at || createdAt) : null;
 
+  // 去重：如已存在同名词汇则直接返回旧 id
+  const existing = await getFirst('SELECT id FROM vocab_items WHERE term = ? LIMIT 1;', [data.term]);
+  const targetId = existing?.id || id;
+
   await run(
     `INSERT OR REPLACE INTO vocab_items (
       id, term, definition, phonetic, language, example, example_translation, tags,
@@ -677,7 +681,7 @@ export async function addVocabItem(data, options = {}) {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     `,
     [
-      id,
+      targetId,
       data.term,
       data.definition || '',
       data.phonetic || '',
@@ -701,7 +705,7 @@ export async function addVocabItem(data, options = {}) {
     ]
   );
 
-  return id;
+  return targetId;
 }
 
 export async function getDueVocabItems(limit = 50) {
@@ -714,6 +718,20 @@ export async function getDueVocabItems(limit = 50) {
     [ts, limit]
   );
 
+  return rows.map((row) => ({
+    ...row,
+    tags: row.tags ? JSON.parse(row.tags) : [],
+  }));
+}
+
+export async function getVocabTimeline(limit = 200) {
+  const rows = await getAll(
+    `SELECT id, term, definition, language, example, example_translation, tags, created_at
+     FROM vocab_items
+     ORDER BY created_at DESC
+     LIMIT ?;`,
+    [limit]
+  );
   return rows.map((row) => ({
     ...row,
     tags: row.tags ? JSON.parse(row.tags) : [],

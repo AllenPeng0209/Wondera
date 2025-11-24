@@ -23,6 +23,7 @@ import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addMessage,
+  addVocabItem,
   getConversationDetail,
   getMessages,
   getRoleSettings,
@@ -54,6 +55,7 @@ export default function ConversationScreen({ navigation, route }) {
   const [wordDetails, setWordDetails] = useState(null);
   const [wordImageError, setWordImageError] = useState(false);
   const [wordImageIndex, setWordImageIndex] = useState(0);
+  const [wordSaveStatus, setWordSaveStatus] = useState('idle');
   const [quotePreview, setQuotePreview] = useState(null);
   const [quoteSource, setQuoteSource] = useState(null);
   const [actionMenuPosition, setActionMenuPosition] = useState(null);
@@ -69,6 +71,13 @@ export default function ConversationScreen({ navigation, route }) {
       setWordSheetLoading(true);
       const result = await getWordCard(word);
       setWordDetails(result);
+      await addVocabItem({
+        term: word,
+        definition: result.translation || '',
+        example: result.example || '',
+        language: 'en',
+        tags: ['from-chat'],
+      });
     } catch (error) {
       console.warn('[WordCard] fetch failed', error?.message || error);
       setWordDetails({
@@ -499,6 +508,7 @@ export default function ConversationScreen({ navigation, route }) {
                 setWordDetails(null);
                 setWordImageError(false);
                 setWordImageIndex(0);
+                setWordSaveStatus('idle');
                 setWordSheetVisible(true);
                 fetchWordDetails(token);
               }}
@@ -713,8 +723,40 @@ export default function ConversationScreen({ navigation, route }) {
                 </View>
               ) : (
                 <>
-                  <Text style={styles.wordSheetLabel}>翻译</Text>
-                  <Text style={styles.wordSheetBody}>{wordDetails.translation}</Text>
+              <View style={styles.wordSheetHeaderRow}>
+                <Text style={styles.wordSheetLabel}>翻译</Text>
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (!selectedWord) return;
+                    try {
+                      await addVocabItem({
+                        term: selectedWord,
+                        definition: wordDetails?.translation || '',
+                        example: wordDetails?.example || '',
+                        language: 'en',
+                        tags: ['from-chat'],
+                      });
+                      setWordSaveStatus('saved');
+                    } catch (e) {
+                      setWordSaveStatus('error');
+                      console.warn('[WordCard] save vocab failed', e);
+                      Alert.alert('保存失败', e?.message || '存词库时出错');
+                    }
+                  }}
+                  style={[styles.wordSheetSaveBtn, wordSaveStatus === 'saved' && { backgroundColor: '#e7f8ef' }]}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={wordSaveStatus === 'saved' ? 'checkmark-done-outline' : 'bookmark-outline'}
+                    size={18}
+                    color={wordSaveStatus === 'saved' ? '#2d9f6f' : '#c24d72'}
+                  />
+                  <Text style={[styles.wordSheetSaveText, wordSaveStatus === 'saved' && { color: '#2d9f6f' }]}>
+                    {wordSaveStatus === 'saved' ? '已保存' : '存词库'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.wordSheetBody}>{wordDetails.translation}</Text>
                   <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>例句</Text>
                   <Text style={styles.wordSheetBody}>{wordDetails.example}</Text>
                   <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>图像提示</Text>
@@ -1021,6 +1063,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  wordSheetHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
   wordSheetTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -1036,6 +1084,20 @@ const styles = StyleSheet.create({
     color: '#444',
     marginTop: 4,
     lineHeight: 20,
+  },
+  wordSheetSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#ffe7ef',
+  },
+  wordSheetSaveText: {
+    marginLeft: 6,
+    color: '#c24d72',
+    fontWeight: '700',
+    fontSize: 12,
   },
   wordSheetHint: {
     marginTop: 12,

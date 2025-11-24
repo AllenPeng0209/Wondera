@@ -16,6 +16,7 @@ import CreateRoleScreen from './src/screens/CreateRoleScreen';
 import WalletScreen from './src/screens/WalletScreen';
 import ApiSettingsScreen from './src/screens/ApiSettingsScreen';
 import PreferenceSettingsScreen from './src/screens/PreferenceSettingsScreen';
+import VocabScreen from './src/screens/VocabScreen';
 
 import DailyTheaterScreen from './src/screens/DailyTheaterScreen';
 import { initDatabase } from './src/storage/db';
@@ -51,6 +52,7 @@ function MainTabs() {
           const iconMap = {
             Messages: 'chatbubble-ellipses-outline',
             Theater: 'film-outline',
+            Vocab: 'book-outline',
             Profile: 'person-circle-outline',
           };
           return <Ionicons name={iconMap[route.name]} color={color} size={size} />;
@@ -63,6 +65,7 @@ function MainTabs() {
     >
       <Tab.Screen name="Messages" component={ChatListScreen} options={{ title: '消息' }} />
       <Tab.Screen name="Theater" component={DailyTheaterScreen} options={{ title: '剧场' }} />
+      <Tab.Screen name="Vocab" component={VocabScreen} options={{ title: '词库' }} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: '我的' }} />
     </Tab.Navigator>
   );
