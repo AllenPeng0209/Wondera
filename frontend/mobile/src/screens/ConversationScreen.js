@@ -513,9 +513,10 @@ export default function ConversationScreen({ navigation, route }) {
   // Add typing indicator to message list when typing
   const listData = isTyping ? [...messages, { type: 'typing', id: 'typing-indicator' }] : messages;
 
+  const bottomPadding = Math.max(insets.bottom, 12);
   return (
     <ImageBackground source={backgroundImage} style={styles.backgroundImage} imageStyle={styles.backgroundImageStyle}>
-      <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}>
+      <SafeAreaView style={[styles.container, { paddingTop: topPadding, paddingBottom: bottomPadding }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={22} color="#333" />
@@ -791,7 +792,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    marginBottom: 20,
+    marginTop: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.92)',
   },
   inputIcon: {
