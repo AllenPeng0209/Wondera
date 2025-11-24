@@ -78,9 +78,14 @@ export default function DiscoverScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { paddingTop: Math.max(insets.top - 8, 8) }]}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerLabel}>发现</Text>
-          <Text style={styles.headerSubtitle}>这些人，想和你分享秘密</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={20} color="#3f3f3f" />
+          </TouchableOpacity>
+          <View>
+            <Text style={styles.headerLabel}>发现</Text>
+            <Text style={styles.headerSubtitle}>这些人，想和你分享秘密</Text>
+          </View>
         </View>
         <TouchableOpacity style={styles.likedCount}>
           <Ionicons name="sparkles-outline" size={18} color="#f093a4" />
@@ -199,6 +204,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
     paddingHorizontal: 20,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  backButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    backgroundColor: '#f5f5f5',
   },
   headerLabel: {
     fontSize: 24,
