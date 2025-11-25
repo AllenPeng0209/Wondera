@@ -28,6 +28,7 @@ import {
   getConversationDetail,
   getMessages,
   getRoleSettings,
+  getUserSettings,
   saveMessageAudio,
   deleteMessage,
 } from '../storage/db';
@@ -60,6 +61,7 @@ export default function ConversationScreen({ navigation, route }) {
   const [quotePreview, setQuotePreview] = useState(null);
   const [quoteSource, setQuoteSource] = useState(null);
   const [actionMenuPosition, setActionMenuPosition] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const listRef = useRef(null);
   const messagesRef = useRef([]);
   const greetingSentRef = useRef(false);
@@ -102,6 +104,17 @@ export default function ConversationScreen({ navigation, route }) {
         soundRef.current = null;
       }
     };
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const profile = await getUserSettings();
+        setUserProfile(profile || null);
+      } catch (error) {
+        console.warn('[Conversation] load user settings failed', error);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -253,6 +266,7 @@ export default function ConversationScreen({ navigation, route }) {
         conversation,
         role,
         history: nextHistory,
+        userProfile,
       });
       await deliverAiChunks(aiResult.text);
       if (typeof aiResult.nextCursor === 'number') {

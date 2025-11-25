@@ -163,6 +163,13 @@ export async function initDatabase() {
   await ensureColumn('user_settings', 'swipe_reply', 'INTEGER DEFAULT 0');
   await ensureColumn('user_settings', 'wait_to_reply', 'INTEGER DEFAULT 0');
   await ensureColumn('user_settings', 'affection_points', 'INTEGER DEFAULT 0');
+  await ensureColumn('user_settings', 'mbti', 'TEXT');
+  await ensureColumn('user_settings', 'zodiac', 'TEXT');
+  await ensureColumn('user_settings', 'birthday', 'TEXT');
+  await ensureColumn('user_settings', 'onboarding_done', 'INTEGER DEFAULT 0');
+  await ensureColumn('user_settings', 'login_email', 'TEXT');
+  await ensureColumn('user_settings', 'login_password', 'TEXT');
+  await ensureColumn('user_settings', 'is_logged_in', 'INTEGER DEFAULT 0');
 
   await run(`CREATE TABLE IF NOT EXISTS ai_knock_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -240,6 +247,13 @@ async function seedInitialData() {
       api_provider: 'Dreamate Cloud',
       api_mode: 'wallet',
       bubble_style: 'default',
+      mbti: '',
+      zodiac: '',
+      birthday: '',
+      onboarding_done: 0,
+      login_email: '',
+      login_password: '',
+      is_logged_in: 0,
     });
   }
 

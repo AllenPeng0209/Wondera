@@ -17,9 +17,13 @@ import WalletScreen from './src/screens/WalletScreen';
 import ApiSettingsScreen from './src/screens/ApiSettingsScreen';
 import PreferenceSettingsScreen from './src/screens/PreferenceSettingsScreen';
 import VocabScreen from './src/screens/VocabScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import LoginScreen from './src/screens/LoginScreen';
+import LoginEmailScreen from './src/screens/LoginEmailScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
 
 import DailyTheaterScreen from './src/screens/DailyTheaterScreen';
-import { initDatabase } from './src/storage/db';
+import { initDatabase, getUserSettings } from './src/storage/db';
 import { requestNotificationPermissions } from './src/services/notifications';
 import { registerAiKnockBackgroundTask, runAiKnockOnce } from './src/background/aiKnockTask';
 
@@ -73,11 +77,17 @@ function MainTabs() {
 
 export default function App() {
   const [ready, setReady] = useState(false);
+  const [initialRoute, setInitialRoute] = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
         await initDatabase();
+        const settings = await getUserSettings();
+        const missingProfile = !settings?.onboarding_done || !settings?.nickname || !settings?.mbti || !settings?.zodiac || !settings?.birthday;
+        const needsLogin = settings?.is_logged_in === 0;
+        const route = needsLogin ? 'Login' : missingProfile ? 'Onboarding' : 'Home';
+        setInitialRoute(route);
         // 初始化本地通知 & 后台任务，让 AI 能在后台“拍一拍”
         const granted = await requestNotificationPermissions();
         if (!granted) {
@@ -94,13 +104,16 @@ export default function App() {
         }
       } catch (error) {
         console.error('Database init failed', error);
+        if (!initialRoute) {
+          setInitialRoute('Home');
+        }
       } finally {
         setReady(true);
       }
     })();
   }, []);
 
-  if (!ready) {
+  if (!ready || !initialRoute) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator color="#f093a4" />
@@ -112,7 +125,11 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <NavigationContainer theme={navTheme}>
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRoute}>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="LoginEmail" component={LoginEmailScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="Onboarding" component={OnboardingScreen} />
             <Stack.Screen name="Home" component={MainTabs} />
           <Stack.Screen name="Discover" component={DiscoverScreen} />
           <Stack.Screen name="Conversation" component={ConversationScreen} />

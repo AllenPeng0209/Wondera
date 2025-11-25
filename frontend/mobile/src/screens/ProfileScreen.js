@@ -58,6 +58,11 @@ export default function ProfileScreen({ navigation }) {
     closeEditor();
   };
 
+  const handleLogout = async () => {
+    await updateUserSettings({ is_logged_in: 0 });
+    navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+  };
+
   if (loading || !settings) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}> 
@@ -143,6 +148,11 @@ export default function ProfileScreen({ navigation }) {
           onSave={saveEditor}
           onChangeValue={(value) => setEditor((prev) => ({ ...prev, value }))}
         />
+
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.85}>
+          <Ionicons name="exit-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.logoutText}>退出登录</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -434,5 +444,24 @@ const styles = StyleSheet.create({
   genderTextActive: {
     color: '#f093a4',
     fontWeight: '600',
+  },
+  logoutButton: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#f093a4',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  logoutText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 15,
   },
 });

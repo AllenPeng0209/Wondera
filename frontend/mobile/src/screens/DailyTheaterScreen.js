@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, Image, Dimensions } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, Image, Dimensions, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -13,7 +13,7 @@ import {
 } from '../storage/db';
 import { getRoleImage } from '../data/images';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const formatDateKey = () => {
   const date = new Date();
@@ -42,6 +42,7 @@ export default function DailyTheaterScreen({ navigation }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [affection, setAffection] = useState(0);
+  const [busyTaskId, setBusyTaskId] = useState(null);
   const dayKey = formatDateKey();
 
   const load = useCallback(async () => {
@@ -65,6 +66,8 @@ export default function DailyTheaterScreen({ navigation }) {
   );
 
   const handleComplete = async (task) => {
+    if (busyTaskId) return;
+    setBusyTaskId(task.id);
     try {
       const targetRoleId = task.target_role_id || defaultRoleByTitle[task.title] || 'antoine';
       const kickoff = task.kickoff_prompt || 'I could use your help. Can you handle this?';
@@ -75,18 +78,27 @@ export default function DailyTheaterScreen({ navigation }) {
       const stagePrompt = [sceneLine, taskLine, wordsLine].filter(Boolean).join(' ｜ ');
 
       const conversationId = await ensureConversationByRoleId(targetRoleId);
-      if (stagePrompt) {
-        await addMessage(conversationId, 'ai', `[剧场任务提示] ${stagePrompt}`);
+      if (!task.completed) {
+        if (stagePrompt) {
+          await addMessage(conversationId, 'ai', `[剧场任务提示] ${stagePrompt}`);
+        }
+        await addMessage(conversationId, 'ai', kickoff);
+        await completeDailyTask(task.id);
+        await load();
       }
-      await addMessage(conversationId, 'ai', kickoff);
-
-      await completeDailyTask(task.id);
-      await load();
       navigation.navigate('Conversation', { conversationId });
     } catch (error) {
       console.warn('[DailyTheater] complete failed', error);
       Alert.alert('操作失败', error?.message || '完成任务时出错');
+    } finally {
+      setBusyTaskId(null);
     }
+  };
+
+  const handleStartFirst = () => {
+    if (!tasks.length) return;
+    const next = tasks.find((t) => !t.completed) || tasks[0];
+    handleComplete(next);
   };
 
   const renderItem = ({ item, index }) => {
@@ -114,7 +126,13 @@ export default function DailyTheaterScreen({ navigation }) {
           </View>
           <Text style={styles.dayLabel}>Day {index + 1}</Text>
         </View>
-        <View style={styles.cardBody}>
+        <ScrollView
+          style={styles.cardBodyScroll}
+          contentContainerStyle={styles.cardBody}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+          
+        >
           <Text style={styles.title}>{item.title || ''}</Text>
           <Text style={styles.description}>{item.description || ''}</Text>
 
@@ -160,14 +178,19 @@ export default function DailyTheaterScreen({ navigation }) {
             style={[styles.actionButton, completed && styles.actionButtonDone]}
             activeOpacity={0.85}
             onPress={() => handleComplete(item)}
-            disabled={completed}
+            disabled={!!busyTaskId}
           >
             <Text style={[styles.actionText, completed && styles.actionTextDone]}>
-              {completed ? '已完成' : '去对话完成任务'}
+              {completed ? '进入对话' : '去对话完成任务'}
             </Text>
-            {!completed && <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />}
+            <Ionicons
+              name="arrow-forward"
+              size={16}
+              color={completed ? '#f093a4' : '#fff'}
+              style={{ marginLeft: 8 }}
+            />
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </View>
     );
   };
@@ -200,8 +223,26 @@ export default function DailyTheaterScreen({ navigation }) {
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: Math.max(insets.bottom + 140, 160) },
+          ]}
+          style={{ flexGrow: 0 }}
         />
+      )}
+
+      {!loading && tasks.length > 0 && (
+        <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}> 
+          <TouchableOpacity
+            style={[styles.bottomButton, busyTaskId && { opacity: 0.7 }]}
+            onPress={handleStartFirst}
+            disabled={!!busyTaskId}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="play" size={18} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.bottomButtonText}>进入剧场对话</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -251,17 +292,46 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 12,
   },
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -20,
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: -8,
+  
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+
+    shadowOffset: { width: 0, height: 0 },
+  },
+  bottomButton: {
+    backgroundColor: '#f093a4',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  bottomButtonText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 16,
+  },
   card: {
     width: SCREEN_WIDTH - 32,
-    marginHorizontal: 8,
+    marginHorizontal: 6,
     padding: 0,
     borderRadius: 20,
     backgroundColor: '#fff',
-    overflow: 'hidden',
+    overflow: 'visible',
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
+    height: 1000,
   },
   cardHeroWrapper: {
     height: 180,
@@ -302,7 +372,11 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     paddingHorizontal: 18,
-    paddingBottom: 14,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  cardBodyScroll: {
+    maxHeight: SCREEN_HEIGHT * 0.62,
   },
   scenePill: {
     flexDirection: 'row',
@@ -423,10 +497,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   actionButton: {
-    marginTop: 16,
-    marginHorizontal: 0,
-    marginBottom: 16,
-    paddingVertical: 12,
+    marginTop: 18,
+    marginHorizontal: 18,
+    marginBottom: 20,
+    paddingVertical: 14,
     borderRadius: 14,
     backgroundColor: '#f093a4',
     flexDirection: 'row',
@@ -435,13 +509,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   actionButtonDone: {
-    backgroundColor: '#e0e0e0',
+    backgroundColor: '#fff4f8',
+    borderWidth: 1,
+    borderColor: '#f6cad7',
   },
   actionText: {
     color: '#fff',
     fontWeight: '700',
   },
   actionTextDone: {
-    color: '#777',
+    color: '#f093a4',
   },
 });

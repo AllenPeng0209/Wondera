@@ -8,6 +8,7 @@ import {
   addMessage,
   getAiKnockCountSince,
   recordAiKnockSend,
+  getUserSettings,
 } from '../storage/db';
 import { generateAiReply } from '../services/ai';
 import { sendLocalKnockNotification } from '../services/notifications';
@@ -73,11 +74,13 @@ export async function runAiKnockOnce(sinceMs = 6 * 60 * 60 * 1000) {
 
   const { conversation, role } = detail;
   const history = await getMessages(conversation.id);
+  const userProfile = await getUserSettings();
 
   const aiResult = await generateAiReply({
     conversation,
     role,
     history,
+    userProfile,
   });
 
   const normalized = (aiResult?.text || '').replace(/\r/g, '').trim();

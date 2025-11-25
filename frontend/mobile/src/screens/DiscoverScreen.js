@@ -139,12 +139,12 @@ function Card({ card, navigation, cardHeight }) {
   };
 
   return (
-    <View style={[styles.cardContainer, { height: cardHeight }]}>
+    <View style={styles.cardContainer}>
       <TouchableOpacity
         activeOpacity={0.95}
         onPress={handlePress}
       >
-        <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+        <Animated.View style={[styles.card, { opacity: fadeAnim, minHeight: cardHeight }]}>
           <Image source={imageSource} style={styles.cardImage} />
 
           {/* Gradient overlay for text readability */}
@@ -250,7 +250,6 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    height: '100%',
     borderRadius: 28,
     overflow: 'hidden',
     backgroundColor: '#fff',
