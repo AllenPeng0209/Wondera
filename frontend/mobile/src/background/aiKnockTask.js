@@ -6,6 +6,8 @@ import {
   getConversationDetail,
   getMessages,
   addMessage,
+  getAiKnockCountSince,
+  recordAiKnockSend,
 } from '../storage/db';
 import { generateAiReply } from '../services/ai';
 import { sendLocalKnockNotification } from '../services/notifications';
@@ -54,6 +56,12 @@ export async function registerAiKnockBackgroundTask() {
 // 单次执行逻辑：挑一个适合“拍一拍”的会话，生成一条 AI 消息并通过本地通知提醒
 // sinceMs 可选：用于开发环境强制触发（例如传 0 忽略时间限制）
 export async function runAiKnockOnce(sinceMs = 6 * 60 * 60 * 1000) {
+  const sentLastDay = await getAiKnockCountSince(24 * 60 * 60 * 1000);
+  const DAILY_LIMIT = 3;
+  if (sentLastDay >= DAILY_LIMIT) {
+    return false;
+  }
+
   const candidates = await getKnockableConversations(sinceMs);
   if (!Array.isArray(candidates) || !candidates.length) {
     return false;
@@ -72,15 +80,23 @@ export async function runAiKnockOnce(sinceMs = 6 * 60 * 60 * 1000) {
     history,
   });
 
-  const text = (aiResult?.text || '').trim();
-  if (!text) {
+  const normalized = (aiResult?.text || '').replace(/\r/g, '').trim();
+  if (!normalized) {
     return false;
   }
 
-  const createdAt = Date.now();
-  await addMessage(conversation.id, 'ai', text, createdAt);
+  const chunks = normalized.includes('\n')
+    ? normalized.split('\n').filter((line) => line.trim())
+    : (normalized.match(/[^。！？!\?…]+[。！？!\?…]?/g) || [normalized]);
 
-  const preview = text.replace(/\s+/g, ' ').slice(0, 40);
+  const baseTime = Date.now();
+  for (let i = 0; i < chunks.length; i++) {
+    await addMessage(conversation.id, 'ai', chunks[i], baseTime + i);
+  }
+
+  await recordAiKnockSend(conversation.id, baseTime);
+
+  const preview = chunks[0]?.replace(/\s+/g, ' ').slice(0, 40) || '';
 
   await sendLocalKnockNotification({
     conversationId: conversation.id,

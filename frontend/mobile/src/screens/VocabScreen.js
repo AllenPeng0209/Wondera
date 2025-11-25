@@ -2,6 +2,8 @@ import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,6 +26,7 @@ import {
   saveVocabAudio,
 } from '../storage/db';
 import { synthesizeQwenTts } from '../services/tts';
+import { getWordCard } from '../services/ai';
 
 const ratingButtons = [
   { key: 'again', label: '再来', color: '#ff6b6b' },
@@ -46,6 +49,12 @@ export default function VocabScreen() {
   const [historyVisible, setHistoryVisible] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyData, setHistoryData] = useState([]);
+  const [wordSheetVisible, setWordSheetVisible] = useState(false);
+  const [wordSheetLoading, setWordSheetLoading] = useState(false);
+  const [wordDetails, setWordDetails] = useState(null);
+  const [selectedWord, setSelectedWord] = useState('');
+  const [wordImageError, setWordImageError] = useState(false);
+  const [wordImageIndex, setWordImageIndex] = useState(0);
 
   const formatDate = (ts) => {
     if (!ts) return '--';
@@ -203,6 +212,8 @@ export default function VocabScreen() {
   };
 
   const topPadding = Math.max(insets.top - 8, 8);
+  const historyMaxHeight = Math.max(280, Dimensions.get('window').height * 0.55);
+  const wordSheetMaxHeight = Math.max(320, Dimensions.get('window').height * 0.75);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -216,8 +227,31 @@ export default function VocabScreen() {
     }
   }, []);
 
+  const fetchWordDetails = useCallback(async (word) => {
+    if (!word) return;
+    setSelectedWord(word);
+    setWordSheetVisible(true);
+    setWordSheetLoading(true);
+    setWordDetails(null);
+    setWordImageError(false);
+    setWordImageIndex(0);
+    try {
+      const result = await getWordCard(word);
+      setWordDetails(result);
+    } catch (error) {
+      console.warn('[Vocab] fetch word card failed', error?.message || error);
+      setWordDetails({
+        translation: `示例翻译：${word}`,
+        example: `Example: use ${word} in a sentence.`,
+        imagePrompt: `A simple illustration of ${word}.`,
+      });
+    } finally {
+      setWordSheetLoading(false);
+    }
+  }, []);
+
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}> 
+    <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>词汇练习</Text>
         <TouchableOpacity style={styles.refreshButton} onPress={loadData}>
@@ -249,7 +283,7 @@ export default function VocabScreen() {
       </View>
 
       {historyVisible && (
-        <View style={styles.historyWrapper}>
+        <View style={[styles.historyWrapper, { maxHeight: historyMaxHeight }]}>
           <View style={styles.historyHeader}>
             <Text style={styles.historyTitle}>总词库 · 时间轴</Text>
             <TouchableOpacity style={styles.historyRefresh} onPress={loadHistory}>
@@ -263,7 +297,12 @@ export default function VocabScreen() {
           {historyLoading ? (
             <ActivityIndicator color="#f093a4" style={{ marginTop: 12 }} />
           ) : (
-            <View style={styles.historySectionList}>
+            <ScrollView
+              style={styles.historySectionList}
+              contentContainerStyle={styles.historySectionListContent}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
               {groupedHistory.map((section) => (
                 <View key={section.date} style={styles.historySection}>
                   <View style={styles.historySectionHeader}>
@@ -272,157 +311,226 @@ export default function VocabScreen() {
                   </View>
                   <View style={styles.historyGrid}>
                     {section.items.map((item) => (
-                      <View key={item.id} style={styles.historyCard}>
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.historyCard}
+                        activeOpacity={0.85}
+                        onPress={() => fetchWordDetails(item.term)}
+                      >
                         <Text style={styles.historyTerm}>{item.term}</Text>
                         <Text style={styles.historyDef} numberOfLines={2}>{item.definition || '—'}</Text>
                         <Text style={styles.historyDate}>{formatDate(item.created_at)}</Text>
-                      </View>
+                      </TouchableOpacity>
                     ))}
                   </View>
                 </View>
               ))}
-            </View>
+            </ScrollView>
           )}
         </View>
       )}
 
-      {loading ? (
-        <View style={styles.loadingBox}>
-          <ActivityIndicator color="#f093a4" />
-        </View>
-      ) : currentCard ? (
-        <View style={styles.card}>
-          <View style={styles.cardTopRow}>
-            <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-              <Ionicons name="play-skip-forward" size={18} color="#f093a4" />
-              <Text style={styles.skipText}>跳过</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleToggleStar} style={styles.starButton}>
-              <Ionicons
-                name={currentCard.starred ? 'star' : 'star-outline'}
-                size={20}
-                color={currentCard.starred ? '#f5c04f' : '#f093a4'}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.term}>{currentCard.term}</Text>
-          <View style={styles.phoneticRow}>
-            {currentCard.phonetic ? (
-              <Text style={styles.phonetic}>{currentCard.phonetic}</Text>
-            ) : null}
-            <TouchableOpacity
-              style={styles.audioButton}
-              onPress={handlePlayAudio}
-              disabled={audioLoading}
-            >
-              {audioLoading ? (
-                <ActivityIndicator size="small" color="#f093a4" />
-              ) : (
-                <Ionicons
-                  name={playingId === currentCard.id ? 'volume-high' : 'play-circle-outline'}
-                  size={22}
-                  color="#f093a4"
-                />
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {Array.isArray(currentCard.tags) && currentCard.tags.length ? (
-            <View style={styles.tagRow}>
-              {currentCard.tags.map((tag) => (
-                <View key={tag} style={styles.tagChip}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))}
+      {!historyVisible && (
+        <>
+          {loading ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator color="#f093a4" />
             </View>
-          ) : null}
+          ) : currentCard ? (
+            <View style={styles.card}>
+              <View style={styles.cardTopRow}>
+                <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+                  <Ionicons name="play-skip-forward" size={18} color="#f093a4" />
+                  <Text style={styles.skipText}>跳过</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleToggleStar} style={styles.starButton}>
+                  <Ionicons
+                    name={currentCard.starred ? 'star' : 'star-outline'}
+                    size={20}
+                    color={currentCard.starred ? '#f5c04f' : '#f093a4'}
+                  />
+                </TouchableOpacity>
+              </View>
 
-          <TouchableOpacity
-            onPress={() => setShowBack((prev) => !prev)}
-            activeOpacity={0.85}
-            style={styles.meaningToggle}
-          >
-            <Text style={styles.meaningLabel}>{showBack ? '隐藏释义' : '显示释义与例句'}</Text>
-            <Ionicons name={showBack ? 'chevron-up' : 'chevron-down'} size={16} color="#f093a4" />
-          </TouchableOpacity>
+              <Text style={styles.term}>{currentCard.term}</Text>
+              <View style={styles.phoneticRow}>
+                {currentCard.phonetic ? (
+                  <Text style={styles.phonetic}>{currentCard.phonetic}</Text>
+                ) : null}
+                <TouchableOpacity
+                  style={styles.audioButton}
+                  onPress={handlePlayAudio}
+                  disabled={audioLoading}
+                >
+                  {audioLoading ? (
+                    <ActivityIndicator size="small" color="#f093a4" />
+                  ) : (
+                    <Ionicons
+                      name={playingId === currentCard.id ? 'volume-high' : 'play-circle-outline'}
+                      size={22}
+                      color="#f093a4"
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
 
-          {showBack && (
-            <View style={styles.meaningBox}>
-              {(currentCard.definition || '').split(/;|；|\n/).filter(Boolean).map((line, idx) => (
-                <Text key={`${line}-${idx}`} style={styles.definition}>
-                  {line.trim()}
-                </Text>
-              ))}
-              {!currentCard.definition && (
-                <Text style={styles.definition}>未填写释义</Text>
-              )}
-
-              {currentCard.example ? (
-                <View style={styles.exampleBlock}>
-                  <Text style={styles.exampleLabel}>例句</Text>
-                  <Text style={styles.example}>{currentCard.example}</Text>
-                  {currentCard.example_translation ? (
-                    <Text style={styles.exampleTranslation}>{currentCard.example_translation}</Text>
-                  ) : null}
+              {Array.isArray(currentCard.tags) && currentCard.tags.length ? (
+                <View style={styles.tagRow}>
+                  {currentCard.tags.map((tag) => (
+                    <View key={tag} style={styles.tagChip}>
+                      <Text style={styles.tagText}>{tag}</Text>
+                    </View>
+                  ))}
                 </View>
               ) : null}
+
+              <TouchableOpacity
+                onPress={() => setShowBack((prev) => !prev)}
+                activeOpacity={0.85}
+                style={styles.meaningToggle}
+              >
+                <Text style={styles.meaningLabel}>{showBack ? '隐藏释义' : '显示释义与例句'}</Text>
+                <Ionicons name={showBack ? 'chevron-up' : 'chevron-down'} size={16} color="#f093a4" />
+              </TouchableOpacity>
+
+              {showBack && (
+                <View style={styles.meaningBox}>
+                  {(currentCard.definition || '').split(/;|；|\n/).filter(Boolean).map((line, idx) => (
+                    <Text key={`${line}-${idx}`} style={styles.definition}>
+                      {line.trim()}
+                    </Text>
+                  ))}
+                  {!currentCard.definition && (
+                    <Text style={styles.definition}>未填写释义</Text>
+                  )}
+
+                  {currentCard.example ? (
+                    <View style={styles.exampleBlock}>
+                      <Text style={styles.exampleLabel}>例句</Text>
+                      <Text style={styles.example}>{currentCard.example}</Text>
+                      {currentCard.example_translation ? (
+                        <Text style={styles.exampleTranslation}>{currentCard.example_translation}</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              )}
+
+              <View style={styles.ratingRow}>
+                {ratingButtons.map((btn) => (
+                  <TouchableOpacity
+                    key={btn.key}
+                    style={[styles.ratingButton, { backgroundColor: btn.color }]}
+                    onPress={() => handleReview(btn.key)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.ratingText}>{btn.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.secondaryRow}>
+                <TouchableOpacity style={styles.secondaryButton} onPress={() => Alert.alert('即将支持', '将加入口语评分/拼写练习入口')}>
+                  <Ionicons name="mic-outline" size={16} color="#f093a4" />
+                  <Text style={styles.secondaryText}>发音练习</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+                  <Ionicons name="trash-outline" size={16} color="#e55b73" />
+                  <Text style={styles.deleteButtonText}>删除词卡</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.emptyBox}>
+              <Ionicons name="sparkles-outline" size={42} color="#f093a4" />
+              <Text style={styles.emptyTitle}>今天的词卡复习完了</Text>
+              <Text style={styles.emptySubtitle}>可以添加新词，或稍后回来复习</Text>
             </View>
           )}
 
-          <View style={styles.ratingRow}>
-            {ratingButtons.map((btn) => (
-              <TouchableOpacity
-                key={btn.key}
-                style={[styles.ratingButton, { backgroundColor: btn.color }]}
-                onPress={() => handleReview(btn.key)}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.ratingText}>{btn.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={styles.secondaryRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => Alert.alert('即将支持', '将加入口语评分/拼写练习入口')}>
-              <Ionicons name="mic-outline" size={16} color="#f093a4" />
-              <Text style={styles.secondaryText}>发音练习</Text>
+          <ScrollView style={styles.addBox} contentContainerStyle={{ paddingBottom: 40 }}>
+            <Text style={styles.addTitle}>添加新词</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="单词/短语"
+              value={newTerm}
+              onChangeText={setNewTerm}
+              placeholderTextColor="#c9b4bd"
+            />
+            <TextInput
+              style={[styles.input, { minHeight: 60 }]}
+              placeholder="释义/备注"
+              value={newDefinition}
+              onChangeText={setNewDefinition}
+              placeholderTextColor="#c9b4bd"
+              multiline
+            />
+            <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
+              <Text style={styles.addButtonText}>保存到词库</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={16} color="#e55b73" />
-              <Text style={styles.deleteButtonText}>删除词卡</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.emptyBox}>
-          <Ionicons name="sparkles-outline" size={42} color="#f093a4" />
-          <Text style={styles.emptyTitle}>今天的词卡复习完了</Text>
-          <Text style={styles.emptySubtitle}>可以添加新词，或稍后回来复习</Text>
-        </View>
+          </ScrollView>
+        </>
       )}
 
-      <ScrollView style={styles.addBox} contentContainerStyle={{ paddingBottom: 40 }}>
-        <Text style={styles.addTitle}>添加新词</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="单词/短语"
-          value={newTerm}
-          onChangeText={setNewTerm}
-          placeholderTextColor="#c9b4bd"
-        />
-        <TextInput
-          style={[styles.input, { minHeight: 60 }]}
-          placeholder="释义/备注"
-          value={newDefinition}
-          onChangeText={setNewDefinition}
-          placeholderTextColor="#c9b4bd"
-          multiline
-        />
-        <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-          <Text style={styles.addButtonText}>保存到词库</Text>
-        </TouchableOpacity>
-      </ScrollView>
+      {wordSheetVisible && (
+        <View style={styles.wordSheetOverlay} pointerEvents="box-none">
+          <TouchableOpacity
+            style={styles.wordSheetBackdrop}
+            activeOpacity={1}
+            onPress={() => setWordSheetVisible(false)}
+          />
+          <View style={[styles.wordSheet, { maxHeight: wordSheetMaxHeight }]}>
+            <View style={styles.wordSheetHeader}>
+              <Text style={styles.wordSheetTitle}>{selectedWord}</Text>
+              <TouchableOpacity onPress={() => setWordSheetVisible(false)}>
+                <Ionicons name="close" size={22} color="#555" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              contentContainerStyle={[styles.wordSheetContent, { paddingBottom: Math.max(insets.bottom, 12) }]}
+            >
+              {wordSheetLoading || !wordDetails ? (
+                <View style={styles.wordSheetLoadingRow}>
+                  <ActivityIndicator color="#f093a4" />
+                  <Text style={styles.wordSheetHint}>AI 正在生成词卡…</Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.wordSheetLabel}>翻译</Text>
+                  <Text style={styles.wordSheetBody}>{wordDetails.translation}</Text>
+                  <Text style={[styles.wordSheetLabel, { marginTop: 12 }]}>例句</Text>
+                  <Text style={styles.wordSheetBody}>{wordDetails.example}</Text>
+                  <Text style={[styles.wordSheetLabel, { marginTop: 12 }]}>图像提示</Text>
+                  {wordDetails.imageUrls && wordDetails.imageUrls[wordImageIndex] && !wordImageError ? (
+                    <Image
+                      source={{ uri: wordDetails.imageUrls[wordImageIndex] }}
+                      style={styles.wordSheetImage}
+                      resizeMode="cover"
+                      onError={() => {
+                        const nextIndex = wordImageIndex + 1;
+                        if (wordDetails.imageUrls[nextIndex]) {
+                          setWordImageIndex(nextIndex);
+                          setWordImageError(false);
+                        } else {
+                          setWordImageError(true);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <View style={[styles.wordSheetImage, { alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={styles.wordSheetHint}>图片加载失败/暂无图片</Text>
+                    </View>
+                  )}
+                  <Text style={styles.wordSheetBody}>{wordDetails.imagePrompt}</Text>
+                  <Text style={styles.wordSheetHint}>点空白处关闭词卡。</Text>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -535,6 +643,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 16,
     backgroundColor: '#fff',
+    flexShrink: 1,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 10,
@@ -555,6 +664,9 @@ const styles = StyleSheet.create({
   },
   historySectionList: {
     marginTop: 8,
+  },
+  historySectionListContent: {
+    paddingBottom: 8,
   },
   historySection: {
     marginBottom: 12,
@@ -606,6 +718,70 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     color: '#8f8f8f',
+  },
+  wordSheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+  },
+  wordSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  wordSheet: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -4 },
+  },
+  wordSheetContent: {
+    paddingTop: 4,
+  },
+  wordSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  wordSheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  wordSheetLabel: {
+    fontSize: 12,
+    color: '#c24d72',
+    fontWeight: '700',
+  },
+  wordSheetBody: {
+    fontSize: 14,
+    color: '#444',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  wordSheetHint: {
+    marginTop: 12,
+    fontSize: 12,
+    color: '#999',
+  },
+  wordSheetLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  wordSheetImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 12,
+    marginTop: 6,
+    marginBottom: 4,
+    backgroundColor: '#ffeef4',
   },
   card: {
     margin: 16,

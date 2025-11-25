@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View, Image, Dimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -12,6 +12,8 @@ import {
   getUserSettings,
 } from '../storage/db';
 import { getRoleImage } from '../data/images';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
 
 const formatDateKey = () => {
   const date = new Date();
@@ -68,7 +70,9 @@ export default function DailyTheaterScreen({ navigation }) {
       const kickoff = task.kickoff_prompt || 'I could use your help. Can you handle this?';
       const sceneLine = task.scene ? `场景：${task.scene}` : '';
       const taskLine = task.description ? `任务：${task.description}` : '';
-      const stagePrompt = [sceneLine, taskLine].filter(Boolean).join(' ｜ ');
+      const words = Array.isArray(task.target_words) ? task.target_words : [];
+      const wordsLine = words.length ? `目标词汇：${words.join(', ')}` : '';
+      const stagePrompt = [sceneLine, taskLine, wordsLine].filter(Boolean).join(' ｜ ');
 
       const conversationId = await ensureConversationByRoleId(targetRoleId);
       if (stagePrompt) {
@@ -88,6 +92,8 @@ export default function DailyTheaterScreen({ navigation }) {
   const renderItem = ({ item, index }) => {
     const completed = Boolean(item.completed);
     const hero = getRoleImage(item.target_role_id, 'heroImage') || getRoleImage(item.target_role_id, 'avatar');
+    const difficultyLabel = item.difficulty === 'H' ? '进阶' : '中阶';
+    const wordsToShow = Array.isArray(item.target_words) ? item.target_words.slice(0, 5) : [];
     return (
       <View style={styles.card}>
         {hero ? (
@@ -104,7 +110,7 @@ export default function DailyTheaterScreen({ navigation }) {
         <View style={styles.cardHeader}>
           <View style={styles.scenePill}>
             <Ionicons name="heart" size={14} color="#f093a4" />
-            <Text style={styles.sceneText}>{item.scene || '恋爱剧场'}</Text>
+            <Text style={styles.sceneText}>{`${item.scene || '恋爱剧场'} · ${difficultyLabel}`}</Text>
           </View>
           <Text style={styles.dayLabel}>Day {index + 1}</Text>
         </View>
@@ -124,37 +130,51 @@ export default function DailyTheaterScreen({ navigation }) {
             </View>
           ) : null}
 
-        <View style={styles.rewardRow}>
-          <View style={styles.rewardPill}>
-            <Ionicons name="sparkles" size={14} color="#f7a26a" />
-            <Text style={styles.rewardText}>好感 +{item.reward_points || 5}</Text>
-          </View>
-          {completed ? (
-            <View style={styles.completedTag}>
-              <Ionicons name="checkmark-circle" size={16} color="#6fcf97" />
-              <Text style={styles.completedText}>已完成</Text>
+          {wordsToShow.length ? (
+            <View style={styles.vocabBox}>
+              <Text style={styles.vocabLabel}>单词学习</Text>
+              <View style={styles.vocabChips}>
+                {wordsToShow.map((word) => (
+                  <View key={word} style={styles.vocabChip}>
+                    <Text style={styles.vocabChipText}>{word}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           ) : null}
-        </View>
 
-        <TouchableOpacity
-          style={[styles.actionButton, completed && styles.actionButtonDone]}
-          activeOpacity={0.85}
-          onPress={() => handleComplete(item)}
-          disabled={completed}
-        >
-          <Text style={[styles.actionText, completed && styles.actionTextDone]}>
-            {completed ? '已完成' : '去对话完成任务'}
-          </Text>
-          {!completed && <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />}
-        </TouchableOpacity>
+          <View style={styles.rewardRow}>
+            <View style={styles.rewardPill}>
+              <Ionicons name="sparkles" size={14} color="#f7a26a" />
+              <Text style={styles.rewardText}>好感 +{item.reward_points || 5}</Text>
+            </View>
+            {completed ? (
+              <View style={styles.completedTag}>
+                <Ionicons name="checkmark-circle" size={16} color="#6fcf97" />
+                <Text style={styles.completedText}>已完成</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.actionButton, completed && styles.actionButtonDone]}
+            activeOpacity={0.85}
+            onPress={() => handleComplete(item)}
+            disabled={completed}
+          >
+            <Text style={[styles.actionText, completed && styles.actionTextDone]}>
+              {completed ? '已完成' : '去对话完成任务'}
+            </Text>
+            {!completed && <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />}
+          </TouchableOpacity>
         </View>
       </View>
     );
   };
 
   const topPadding = Math.max(insets.top - 8, 8);
-  const bottomPadding = Math.max(insets.bottom, 12);
+  // Keep enough space for home indicator but avoid pushing cards off-screen
+  const bottomPadding = Math.max(insets.bottom + 4, 16);
 
   return (
     <SafeAreaView style={[styles.container, { paddingTop: topPadding, paddingBottom: bottomPadding }]}> 
@@ -232,7 +252,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   card: {
-    width: 320,
+    width: SCREEN_WIDTH - 32,
     marginHorizontal: 8,
     padding: 0,
     borderRadius: 20,
@@ -244,7 +264,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   cardHeroWrapper: {
-    height: 160,
+    height: 180,
     position: 'relative',
   },
   cardHero: {
@@ -340,6 +360,34 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#4a3b44',
     lineHeight: 18,
+  },
+  vocabBox: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#f6f9ff',
+  },
+  vocabLabel: {
+    fontSize: 12,
+    color: '#3b6bcf',
+    marginBottom: 8,
+    fontWeight: '700',
+  },
+  vocabChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  vocabChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#e7f0ff',
+  },
+  vocabChipText: {
+    fontSize: 12,
+    color: '#3156a3',
+    fontWeight: '700',
   },
   rewardRow: {
     flexDirection: 'row',

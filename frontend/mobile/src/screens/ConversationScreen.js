@@ -9,6 +9,7 @@ import {
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -576,6 +577,7 @@ export default function ConversationScreen({ navigation, route }) {
   }
 
   const topPadding = Math.max(insets.top - 8, 8);
+  const sheetMaxHeight = Dimensions.get('window').height * 0.75;
 
   // Use role's hero image as chat background
   const backgroundImage = getRoleImage(role?.id, 'heroImage') || getRoleImage(role?.id, 'avatar');
@@ -621,7 +623,7 @@ export default function ConversationScreen({ navigation, route }) {
         <KeyboardAvoidingView
           style={styles.chatArea}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={80}
+          keyboardVerticalOffset={0}
         >
           <FlatList
             ref={listRef}
@@ -709,81 +711,87 @@ export default function ConversationScreen({ navigation, route }) {
         {wordSheetVisible && (
           <View style={styles.wordSheetOverlay} pointerEvents="box-none">
             <TouchableOpacity style={styles.wordSheetBackdrop} activeOpacity={1} onPress={() => setWordSheetVisible(false)} />
-            <View style={styles.wordSheet}>
+            <View style={[styles.wordSheet, { maxHeight: sheetMaxHeight }]}>
               <View style={styles.wordSheetHeader}>
                 <Text style={styles.wordSheetTitle}>{selectedWord}</Text>
                 <TouchableOpacity onPress={() => setWordSheetVisible(false)}>
                   <Ionicons name="close" size={22} color="#555" />
                 </TouchableOpacity>
               </View>
-              {wordSheetLoading || !wordDetails ? (
-                <View style={styles.wordSheetLoadingRow}>
-                  <ActivityIndicator color="#f093a4" />
-                  <Text style={styles.wordSheetHint}>AI 正在生成词卡…</Text>
-                </View>
-              ) : (
-                <>
-              <View style={styles.wordSheetHeaderRow}>
-                <Text style={styles.wordSheetLabel}>翻译</Text>
-                <TouchableOpacity
-                  onPress={async () => {
-                    if (!selectedWord) return;
-                    try {
-                      await addVocabItem({
-                        term: selectedWord,
-                        definition: wordDetails?.translation || '',
-                        example: wordDetails?.example || '',
-                        language: 'en',
-                        tags: ['from-chat'],
-                      });
-                      setWordSaveStatus('saved');
-                    } catch (e) {
-                      setWordSaveStatus('error');
-                      console.warn('[WordCard] save vocab failed', e);
-                      Alert.alert('保存失败', e?.message || '存词库时出错');
-                    }
-                  }}
-                  style={[styles.wordSheetSaveBtn, wordSaveStatus === 'saved' && { backgroundColor: '#e7f8ef' }]}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons
-                    name={wordSaveStatus === 'saved' ? 'checkmark-done-outline' : 'bookmark-outline'}
-                    size={18}
-                    color={wordSaveStatus === 'saved' ? '#2d9f6f' : '#c24d72'}
-                  />
-                  <Text style={[styles.wordSheetSaveText, wordSaveStatus === 'saved' && { color: '#2d9f6f' }]}>
-                    {wordSaveStatus === 'saved' ? '已保存' : '存词库'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.wordSheetBody}>{wordDetails.translation}</Text>
-                  <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>例句</Text>
-                  <Text style={styles.wordSheetBody}>{wordDetails.example}</Text>
-                  <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>图像提示</Text>
-                  {wordDetails.imageUrls && wordDetails.imageUrls[wordImageIndex] && !wordImageError ? (
-                    <Image
-                      source={{ uri: wordDetails.imageUrls[wordImageIndex] }}
-                      style={styles.wordSheetImage}
-                      resizeMode="cover"
-                      onError={() => {
-                        const nextIndex = wordImageIndex + 1;
-                        if (wordDetails.imageUrls[nextIndex]) {
-                          setWordImageIndex(nextIndex);
-                          setWordImageError(false);
-                        } else {
-                          setWordImageError(true);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <View style={[styles.wordSheetImage, { alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={styles.wordSheetHint}>图片加载失败/暂无图片</Text>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                contentContainerStyle={[styles.wordSheetContent, { paddingBottom: Math.max(insets.bottom, 12) }]}
+              >
+                {wordSheetLoading || !wordDetails ? (
+                  <View style={styles.wordSheetLoadingRow}>
+                    <ActivityIndicator color="#f093a4" />
+                    <Text style={styles.wordSheetHint}>AI 正在生成词卡…</Text>
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.wordSheetHeaderRow}>
+                      <Text style={styles.wordSheetLabel}>翻译</Text>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          if (!selectedWord) return;
+                          try {
+                            await addVocabItem({
+                              term: selectedWord,
+                              definition: wordDetails?.translation || '',
+                              example: wordDetails?.example || '',
+                              language: 'en',
+                              tags: ['from-chat'],
+                            });
+                            setWordSaveStatus('saved');
+                          } catch (e) {
+                            setWordSaveStatus('error');
+                            console.warn('[WordCard] save vocab failed', e);
+                            Alert.alert('保存失败', e?.message || '存词库时出错');
+                          }
+                        }}
+                        style={[styles.wordSheetSaveBtn, wordSaveStatus === 'saved' && { backgroundColor: '#e7f8ef' }]}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons
+                          name={wordSaveStatus === 'saved' ? 'checkmark-done-outline' : 'bookmark-outline'}
+                          size={18}
+                          color={wordSaveStatus === 'saved' ? '#2d9f6f' : '#c24d72'}
+                        />
+                        <Text style={[styles.wordSheetSaveText, wordSaveStatus === 'saved' && { color: '#2d9f6f' }]}>
+                          {wordSaveStatus === 'saved' ? '已保存' : '存词库'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
-                  )}
-                  <Text style={styles.wordSheetBody}>{wordDetails.imagePrompt}</Text>
-                  <Text style={styles.wordSheetHint}>长按单词可打开此面板，点空白关闭。</Text>
-                </>
-              )}
+                    <Text style={styles.wordSheetBody}>{wordDetails.translation}</Text>
+                    <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>例句</Text>
+                    <Text style={styles.wordSheetBody}>{wordDetails.example}</Text>
+                    <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>图像提示</Text>
+                    {wordDetails.imageUrls && wordDetails.imageUrls[wordImageIndex] && !wordImageError ? (
+                      <Image
+                        source={{ uri: wordDetails.imageUrls[wordImageIndex] }}
+                        style={styles.wordSheetImage}
+                        resizeMode="cover"
+                        onError={() => {
+                          const nextIndex = wordImageIndex + 1;
+                          if (wordDetails.imageUrls[nextIndex]) {
+                            setWordImageIndex(nextIndex);
+                            setWordImageError(false);
+                          } else {
+                            setWordImageError(true);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <View style={[styles.wordSheetImage, { alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={styles.wordSheetHint}>图片加载失败/暂无图片</Text>
+                      </View>
+                    )}
+                    <Text style={styles.wordSheetBody}>{wordDetails.imagePrompt}</Text>
+                    <Text style={styles.wordSheetHint}>长按单词可打开此面板，点空白关闭。</Text>
+                  </>
+                )}
+              </ScrollView>
             </View>
           </View>
         )}
@@ -1056,6 +1064,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: -4 },
+  },
+  wordSheetContent: {
+    paddingTop: 4,
   },
   wordSheetHeader: {
     flexDirection: 'row',

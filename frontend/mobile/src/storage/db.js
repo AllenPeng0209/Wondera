@@ -164,6 +164,12 @@ export async function initDatabase() {
   await ensureColumn('user_settings', 'wait_to_reply', 'INTEGER DEFAULT 0');
   await ensureColumn('user_settings', 'affection_points', 'INTEGER DEFAULT 0');
 
+  await run(`CREATE TABLE IF NOT EXISTS ai_knock_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id TEXT,
+      created_at INTEGER
+    );`);
+
   await run(`CREATE TABLE IF NOT EXISTS liked_roles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       role_id TEXT,
@@ -205,6 +211,8 @@ export async function initDatabase() {
       scene TEXT,
       target_role_id TEXT,
       kickoff_prompt TEXT,
+      difficulty TEXT,
+      target_words TEXT,
       reward_points INTEGER DEFAULT 5,
       completed INTEGER DEFAULT 0,
       day_key TEXT,
@@ -214,6 +222,8 @@ export async function initDatabase() {
 
   await ensureColumn('daily_theater_tasks', 'target_role_id', 'TEXT');
   await ensureColumn('daily_theater_tasks', 'kickoff_prompt', 'TEXT');
+  await ensureColumn('daily_theater_tasks', 'difficulty', 'TEXT');
+  await ensureColumn('daily_theater_tasks', 'target_words', 'TEXT');
 
   await seedInitialData();
 }
@@ -348,6 +358,17 @@ export async function getKnockableConversations(sinceMs = 6 * 60 * 60 * 1000) {
 
   const rows = await getAll(sql, hasTimeLimit ? [cutoff] : []);
   return rows;
+}
+
+export async function getAiKnockCountSince(durationMs) {
+  if (!durationMs || durationMs <= 0) return 0;
+  const cutoff = now() - durationMs;
+  const row = await getFirst('SELECT COUNT(*) as count FROM ai_knock_log WHERE created_at >= ?;', [cutoff]);
+  return row?.count ? Number(row.count) : 0;
+}
+
+export async function recordAiKnockSend(conversationId, createdAt = now()) {
+  await run('INSERT INTO ai_knock_log (conversation_id, created_at) VALUES (?, ?);', [conversationId, createdAt]);
 }
 
 export async function getConversationDetail(conversationId) {
@@ -816,44 +837,114 @@ export async function saveVocabAudio(id, audioUrl) {
 
 const THEATER_POOL = [
   {
-    title: '餐厅点单',
-    scene: '咖啡馆午餐',
-    description: '用英文帮他点餐，询问忌口并确认配菜/口味。',
-    reward: 6,
-    targetRoleId: 'antoine',
-    kickoff: "I'm starving. Can you order something you think I'd love? No cilantro, please.",
-  },
-  {
-    title: '物理作业急救',
-    scene: '图书馆',
-    description: '用英文讲解一道能量守恒题，给出解题思路和关键词。',
-    reward: 6,
-    targetRoleId: 'edward',
-    kickoff: 'Morning. This energy question is tricky. Can you walk me through the steps?',
-  },
-  {
-    title: '高层咖啡会谈',
-    scene: '商务咖啡厅',
-    description: '帮他决定咖啡和甜点，用英文给出选择理由并套出他的偏好。',
-    reward: 6,
-    targetRoleId: 'kieran',
-    kickoff: "You picked this cafe. Tell me what to order. Convince me in English.",
-  },
-  {
-    title: '夜市小吃攻略',
-    scene: '夜市',
-    description: '挑选五种小吃，用英文描述口味、辣度和必买理由。',
-    reward: 5,
-    targetRoleId: 'antoine',
-    kickoff: 'So many options—guide me. What should we try first? Keep it simple English.',
-  },
-  {
-    title: '法语加一点甜',
-    scene: '甜品店',
-    description: '用英文+1句法语推荐两款甜品，并询问他想要的口感。',
+    title: '机场速通登机',
+    scene: '国际航站楼',
+    description: '用英文搞定值机、安检、入境问询，给出关键说法和礼貌用语。',
     reward: 7,
+    difficulty: 'M',
     targetRoleId: 'edward',
-    kickoff: 'Dessert time. Recommend something light? Maybe say one French word too.',
+    targetWords: ['layover', 'immigration checkpoint', 'baggage carousel', 'overbooked flight', 'customs declaration'],
+    kickoff: "Flight's in 90 minutes. Help me check in and clear security without drama.",
+  },
+  {
+    title: '酒店升级谈判',
+    scene: '精品酒店前台',
+    description: '用英文争取延迟退房或升房，说明理由并保持礼貌。',
+    reward: 7,
+    difficulty: 'M',
+    targetRoleId: 'antoine',
+    targetWords: ['late checkout', 'concierge desk', 'amenity kit', 'turndown service', 'non-refundable rate'],
+    kickoff: "Front desk looks busy. Coach me to ask for an upgrade politely—English only.",
+  },
+  {
+    title: '商务邮件催办',
+    scene: '开放办公区',
+    description: '写一封简短催办邮件，明确时间线、可执行事项和升级路径。',
+    reward: 6,
+    difficulty: 'M',
+    targetRoleId: 'kieran',
+    targetWords: ['follow-up thread', 'actionable items', 'tentative timeline', 'escalation path', 'sign-off'],
+    kickoff: "I owe a follow-up. Draft me a concise nudge with a clear timeline.",
+  },
+  {
+    title: '会议对齐复盘',
+    scene: '会议室',
+    description: '主持 15 分钟站会，列议题、时间盒、纪要和行动项。',
+    reward: 6,
+    difficulty: 'M',
+    targetRoleId: 'kieran',
+    targetWords: ['quorum', 'agenda item', 'minutes', 'parking lot', 'takeaway'],
+    kickoff: "We have 15 minutes. Help me run this stand-up and keep it tight.",
+  },
+  {
+    title: '雅思口语高分',
+    scene: 'IELTS 模拟考场',
+    description: '用高阶词汇回答“科技对社交的影响”，写 2 句示例。',
+    reward: 8,
+    difficulty: 'H',
+    targetRoleId: 'edward',
+    targetWords: ['ameliorate', 'ubiquitous', 'ramifications', 'juxtapose', 'paradigm shift'],
+    kickoff: "Exam vibe. Give me high-scoring lines on tech and social life—concise, please.",
+  },
+  {
+    title: '高中理科冲刺',
+    scene: '理化实验室',
+    description: '用英文解释公式或实验步骤，突出核心术语和思路。',
+    reward: 6,
+    difficulty: 'M',
+    targetRoleId: 'edward',
+    targetWords: ['photosynthesis', 'hypothesis', 'catalyst', 'momentum', 'resilient'],
+    kickoff: "Homework crunch. Walk me through the concept in English—keep it clear.",
+  },
+  {
+    title: '甜品社交攻略',
+    scene: '法式甜品吧',
+    description: '用英文描述甜品口感与推荐理由，练习外来语发音。',
+    reward: 6,
+    difficulty: 'M',
+    targetRoleId: 'antoine',
+    targetWords: ['mille-feuille', 'tiramisu', 'creme brulee', 'ganache', 'souffle'],
+    kickoff: "Dessert menu is wild. Help me describe picks in English without sounding awkward.",
+  },
+  {
+    title: '约会开场与边界',
+    scene: '周末公园',
+    description: '用英文开启对话，表达喜好与边界，避免尴尬冷场。',
+    reward: 6,
+    difficulty: 'M',
+    targetRoleId: 'antoine',
+    targetWords: ['blind date', 'hit it off', 'deal-breaker', 'chemistry', 'ghosting'],
+    kickoff: "First date jitters. Give me openers and boundary lines in English.",
+  },
+  {
+    title: '人际关系高情商',
+    scene: '合租客厅',
+    description: '用英文表达共情、互惠和冲突调解，举 2 个情境句。',
+    reward: 7,
+    difficulty: 'H',
+    targetRoleId: 'kieran',
+    targetWords: ['empathy', 'boundary-setting', 'reciprocity', 'constructive feedback', 'conflict mediation'],
+    kickoff: "Housemates disagree again. Coach me to de-escalate—in English.",
+  },
+  {
+    title: '时尚美妆搭配',
+    scene: '彩妆工作室',
+    description: '用英文描述穿搭廓形、妆效与显色度，给出搭配建议。',
+    reward: 7,
+    difficulty: 'H',
+    targetRoleId: 'antoine',
+    targetWords: ['capsule wardrobe', 'silhouette', 'monochrome look', 'dewy finish', 'contouring', 'statement piece'],
+    kickoff: "I need a look for tonight. Explain the choices in English so I sound pro.",
+  },
+  {
+    title: '欧美恋爱文化差异',
+    scene: '街角咖啡沙发',
+    description: '用英文解释关系定义、慢热、过渡恋情等概念，给例句。',
+    reward: 7,
+    difficulty: 'H',
+    targetRoleId: 'kieran',
+    targetWords: ['meet-cute', 'DTR', 'slow burn', 'rebound', 'love bombing', 'situationship'],
+    kickoff: "Cultural gap alert. Teach me these dating terms in natural English.",
   },
 ];
 
@@ -872,6 +963,8 @@ function pickDailyTasks(dayKey, count = 3) {
     scene: item.scene,
     target_role_id: item.targetRoleId,
     kickoff_prompt: item.kickoff,
+    difficulty: item.difficulty || 'M',
+    target_words: JSON.stringify(item.targetWords || []),
     reward_points: item.reward || 5,
     completed: 0,
     day_key: dayKey,
@@ -882,21 +975,33 @@ function pickDailyTasks(dayKey, count = 3) {
 
 export async function ensureDailyTasksForDay(dayKey) {
   const existing = await getAll('SELECT * FROM daily_theater_tasks WHERE day_key = ?;', [dayKey]);
-  const isValid = existing && existing.length >= 3 && existing.every((t) => t.target_role_id && t.kickoff_prompt);
+  const isValid =
+    existing &&
+    existing.length >= 3 &&
+    existing.every((t) => t.target_role_id && t.kickoff_prompt && t.target_words);
   if (existing && existing.length >= 1 && !isValid) {
-    // 尝试为缺少角色/开场白的旧任务回填
+    // 尝试为缺少角色/开场白/难度/目标词的旧任务回填
     for (const task of existing) {
-      if (task.target_role_id && task.kickoff_prompt) continue;
       const poolMeta = THEATER_POOL.find((p) => p.title === task.title);
       const fallbackRole = poolMeta?.targetRoleId || 'antoine';
       const fallbackKickoff = poolMeta?.kickoff || 'Hey, ready to start this task?';
+      const fallbackDifficulty = poolMeta?.difficulty || 'M';
+      const fallbackWords = JSON.stringify(poolMeta?.targetWords || []);
+
+      if (task.target_role_id && task.kickoff_prompt && task.target_words) continue;
       await run(
-        'UPDATE daily_theater_tasks SET target_role_id = ?, kickoff_prompt = ? WHERE id = ?;',
-        [task.target_role_id || fallbackRole, task.kickoff_prompt || fallbackKickoff, task.id]
+        'UPDATE daily_theater_tasks SET target_role_id = ?, kickoff_prompt = ?, difficulty = ?, target_words = ? WHERE id = ?;',
+        [
+          task.target_role_id || fallbackRole,
+          task.kickoff_prompt || fallbackKickoff,
+          task.difficulty || fallbackDifficulty,
+          task.target_words || fallbackWords,
+          task.id,
+        ]
       );
     }
     const updated = await getAll('SELECT * FROM daily_theater_tasks WHERE day_key = ?;', [dayKey]);
-    if (updated.every((t) => t.target_role_id && t.kickoff_prompt)) return updated;
+    if (updated.every((t) => t.target_role_id && t.kickoff_prompt && t.target_words)) return updated;
   }
 
   // 清理旧日数据（只保留当日，避免无限增长）
@@ -906,13 +1011,18 @@ export async function ensureDailyTasksForDay(dayKey) {
   const tasks = pickDailyTasks(dayKey, 3);
   for (const task of tasks) {
     await run(
-      `INSERT OR REPLACE INTO daily_theater_tasks (id, title, description, scene, reward_points, completed, day_key, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      `INSERT OR REPLACE INTO daily_theater_tasks (
+        id, title, description, scene, target_role_id, kickoff_prompt, difficulty, target_words, reward_points, completed, day_key, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         task.id,
         task.title,
         task.description,
         task.scene,
+        task.target_role_id,
+        task.kickoff_prompt,
+        task.difficulty,
+        task.target_words,
         task.reward_points,
         task.completed,
         task.day_key,
@@ -926,7 +1036,11 @@ export async function ensureDailyTasksForDay(dayKey) {
 
 export async function getDailyTasks(dayKey) {
   const rows = await getAll('SELECT * FROM daily_theater_tasks WHERE day_key = ? ORDER BY created_at ASC;', [dayKey]);
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    target_words: row.target_words ? JSON.parse(row.target_words) : [],
+    difficulty: row.difficulty || 'M',
+  }));
 }
 
 export async function completeDailyTask(taskId) {

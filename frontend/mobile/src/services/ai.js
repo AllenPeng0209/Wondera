@@ -20,7 +20,7 @@ async function callQwen(messages, systemPrompt) {
 }
 
 function prepareSystemPrompt(role) {
-  return `请严格扮演“${role.name}”，具备以下设定：${role.persona}`;
+  return `请严格扮演“${role.name}”，具备以下设定：${role.persona}。回复要求：只用口语化第一人称对话，不写旁白、动作或场景描写；不要使用括号/星号等舞台指令；保持简短，单条回复尽量控制在30-60个汉字。`;
 }
 
 function buildMessagePayload(history) {
