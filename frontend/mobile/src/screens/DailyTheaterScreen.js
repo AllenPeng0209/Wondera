@@ -174,22 +174,7 @@ export default function DailyTheaterScreen({ navigation }) {
             ) : null}
           </View>
 
-          <TouchableOpacity
-            style={[styles.actionButton, completed && styles.actionButtonDone]}
-            activeOpacity={0.85}
-            onPress={() => handleComplete(item)}
-            disabled={!!busyTaskId}
-          >
-            <Text style={[styles.actionText, completed && styles.actionTextDone]}>
-              {completed ? '进入对话' : '去对话完成任务'}
-            </Text>
-            <Ionicons
-              name="arrow-forward"
-              size={16}
-              color={completed ? '#f093a4' : '#fff'}
-              style={{ marginLeft: 8 }}
-            />
-          </TouchableOpacity>
+   
         </ScrollView>
       </View>
     );
