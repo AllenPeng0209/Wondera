@@ -1,13 +1,16 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   FlatList,
   Image,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -16,9 +19,21 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { Audio } from 'expo-av';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addMessage, getConversationDetail, getMessages, getRoleSettings } from '../storage/db';
-import { generateAiReply } from '../services/ai';
+import {
+  addMessage,
+  addVocabItem,
+  getConversationDetail,
+  getMessages,
+  getRoleSettings,
+  getUserSettings,
+  saveMessageAudio,
+  deleteMessage,
+} from '../storage/db';
+import { generateAiReply, getWordCard } from '../services/ai';
+import { synthesizeQwenTts } from '../services/tts';
 import { getRoleImage } from '../data/images';
 
 export default function ConversationScreen({ navigation, route }) {
@@ -31,15 +46,76 @@ export default function ConversationScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [ttsLoadingMessageId, setTtsLoadingMessageId] = useState(null);
+  const [playingMessageId, setPlayingMessageId] = useState(null);
   const [roleConfig, setRoleConfig] = useState(null);
+  const [actionMenuVisible, setActionMenuVisible] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [selectedWord, setSelectedWord] = useState('');
+  const [wordSheetVisible, setWordSheetVisible] = useState(false);
+  const [wordSheetLoading, setWordSheetLoading] = useState(false);
+  const [wordDetails, setWordDetails] = useState(null);
+  const [wordImageError, setWordImageError] = useState(false);
+  const [wordImageIndex, setWordImageIndex] = useState(0);
+  const [wordSaveStatus, setWordSaveStatus] = useState('idle');
+  const [quotePreview, setQuotePreview] = useState(null);
+  const [quoteSource, setQuoteSource] = useState(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const listRef = useRef(null);
   const messagesRef = useRef([]);
   const greetingSentRef = useRef(false);
   const prevIsTypingRef = useRef(false);
+  const soundRef = useRef(null);
+
+  const fetchWordDetails = useCallback(async (word) => {
+    if (!word) return;
+    try {
+      setWordSheetLoading(true);
+      const result = await getWordCard(word);
+      setWordDetails(result);
+      await addVocabItem({
+        term: word,
+        definition: result.translation || '',
+        example: result.example || '',
+        language: 'en',
+        tags: ['from-chat'],
+      });
+    } catch (error) {
+      console.warn('[WordCard] fetch failed', error?.message || error);
+      setWordDetails({
+        translation: `示例翻译：${word}`,
+        example: `Example: use ${word} in a sentence.`,
+        imagePrompt: `A simple illustration of ${word}.`,
+      });
+    } finally {
+      setWordSheetLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const profile = await getUserSettings();
+        setUserProfile(profile || null);
+      } catch (error) {
+        console.warn('[Conversation] load user settings failed', error);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -173,8 +249,13 @@ export default function ConversationScreen({ navigation, route }) {
     }
     const content = inputValue.trim();
     setInputValue('');
+    const quotedBody = quoteSource || null;
+    setQuotePreview(null);
+    setQuoteSource(null);
     const createdAt = Date.now();
-    const newMessage = await addMessage(conversation.id, 'user', content, createdAt);
+    const newMessage = await addMessage(conversation.id, 'user', content, createdAt, {
+      quotedBody,
+    });
     const nextHistory = [...messagesRef.current, newMessage];
     setMessages(nextHistory);
     messagesRef.current = nextHistory;
@@ -185,6 +266,7 @@ export default function ConversationScreen({ navigation, route }) {
         conversation,
         role,
         history: nextHistory,
+        userProfile,
       });
       await deliverAiChunks(aiResult.text);
       if (typeof aiResult.nextCursor === 'number') {
@@ -253,25 +335,248 @@ export default function ConversationScreen({ navigation, route }) {
     );
   };
 
+  const handlePlayTts = useCallback(
+    async (message) => {
+      if (!message || !message.body) return;
+
+      try {
+        // 如果正在播放同一条消息，则停止播放
+        if (playingMessageId === message.id && soundRef.current) {
+          await soundRef.current.stopAsync();
+          await soundRef.current.setPositionAsync(0);
+          setPlayingMessageId(null);
+          return;
+        }
+
+        setTtsLoadingMessageId(message.id);
+
+        if (soundRef.current) {
+          await soundRef.current.unloadAsync();
+          soundRef.current = null;
+        }
+
+        // 优先使用已缓存的音频 URL，避免重复请求 TTS
+        let audioUrl = message.audioUrl;
+        let audioMime = message.audioMime || null;
+        let audioDuration = message.audioDuration || null;
+
+        if (!audioUrl) {
+          const tts = await synthesizeQwenTts({ text: message.body });
+          if (!tts || !tts.audioUrl) {
+            setTtsLoadingMessageId(null);
+            Alert.alert('语音生成失败', '未能从 TTS 接口获取音频。');
+            return;
+          }
+
+          audioUrl = tts.audioUrl;
+          audioMime = tts.mimeType || null;
+          audioDuration = tts.durationSeconds || null;
+
+          // 写入本地 DB，后续播放直接复用
+          try {
+            await saveMessageAudio(message.id, {
+              audioUrl,
+              audioMime,
+              audioDuration,
+            });
+          } catch (dbError) {
+            console.warn('[Conversation] 保存 TTS 音频到本地失败', dbError);
+          }
+
+          // 同步更新内存中的消息列表
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === message.id
+                ? { ...m, audioUrl, audioMime, audioDuration }
+                : m
+            )
+          );
+          messagesRef.current = messagesRef.current.map((m) =>
+            m.id === message.id
+              ? { ...m, audioUrl, audioMime, audioDuration }
+              : m
+          );
+        }
+
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: true }
+        );
+        soundRef.current = sound;
+        setPlayingMessageId(message.id);
+        setTtsLoadingMessageId(null);
+
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (!status.isLoaded) {
+            return;
+          }
+          if (!status.isPlaying) {
+            setPlayingMessageId((current) =>
+              current === message.id ? null : current
+            );
+          }
+        });
+      } catch (error) {
+        console.error('[Conversation] TTS 播放失败', error);
+        setTtsLoadingMessageId(null);
+        Alert.alert('语音播放失败', error?.message || '生成或播放语音时出错');
+      }
+    },
+    [playingMessageId]
+  );
+
+  const handleMessageLongPress = useCallback((message, event) => {
+    if (!message) return;
+    const { pageX, pageY } = event?.nativeEvent || {};
+    const { width } = Dimensions.get('window');
+    const menuWidth = 260;
+
+    let left = pageX ? pageX - menuWidth / 2 : (width - menuWidth) / 2;
+    left = Math.max(8, Math.min(left, width - menuWidth - 8));
+
+    // 菜单显示在气泡上方一点
+    const top = pageY ? Math.max(80, pageY - 60) : 120;
+
+    setActionMenuPosition({ top, left });
+    setSelectedMessage(message);
+    setActionMenuVisible(true);
+  }, []);
+
+  const closeActionMenu = useCallback(() => {
+    setActionMenuVisible(false);
+    setSelectedMessage(null);
+  }, []);
+
+  const handleCopyMessage = useCallback(async () => {
+    if (!selectedMessage || !selectedMessage.body) return;
+    try {
+      await Clipboard.setStringAsync(selectedMessage.body);
+    } catch (error) {
+      console.warn('[Conversation] 复制失败', error);
+    } finally {
+      closeActionMenu();
+    }
+  }, [selectedMessage, closeActionMenu]);
+
+  const handleForwardMessage = useCallback(async () => {
+    if (!selectedMessage || !selectedMessage.body) return;
+    try {
+      await Share.share({ message: selectedMessage.body });
+    } catch (error) {
+      console.warn('[Conversation] 转发失败', error);
+    } finally {
+      closeActionMenu();
+    }
+  }, [selectedMessage, closeActionMenu]);
+
+  const handleDeleteMessage = useCallback(async () => {
+    if (!selectedMessage) return;
+    try {
+      await deleteMessage(selectedMessage.id);
+      setMessages((prev) => prev.filter((m) => m.id !== selectedMessage.id));
+      messagesRef.current = messagesRef.current.filter((m) => m.id !== selectedMessage.id);
+    } catch (error) {
+      console.warn('[Conversation] 删除消息失败', error);
+    } finally {
+      closeActionMenu();
+    }
+  }, [selectedMessage, closeActionMenu]);
+
+  const handleQuoteMessage = useCallback(() => {
+    if (!selectedMessage || !selectedMessage.body) return;
+    const snippet =
+      selectedMessage.body.length > 40
+        ? `${selectedMessage.body.slice(0, 40)}…`
+        : selectedMessage.body;
+    setQuotePreview(snippet);
+    setQuoteSource(selectedMessage.body);
+    closeActionMenu();
+  }, [selectedMessage, closeActionMenu]);
+
+  const handlePlayFromMenu = useCallback(() => {
+    if (!selectedMessage) return;
+    handlePlayTts(selectedMessage);
+    closeActionMenu();
+  }, [selectedMessage, handlePlayTts, closeActionMenu]);
+
   const renderMessage = ({ item }) => {
     const isUser = item.sender === 'user';
+    const bodyText = (item.body || '').replace(/\r/g, '').replace(/\n+/g, ' ');
+    const quotedText = (item.quotedBody || '').replace(/\r/g, '').replace(/\n+/g, ' ');
+
+    const wordTokens = bodyText.split(/(\s+)/).filter((t) => t.length > 0);
+
+    const renderTokenizedText = () => (
+      <Text style={isUser ? [styles.bubbleText, styles.bubbleTextUser] : styles.bubbleText}>
+        {wordTokens.map((token, idx) => {
+          const isSpace = /^\s+$/.test(token);
+          if (isSpace) {
+            return <Text key={`space-${idx}`}>{token}</Text>;
+          }
+          const isSelected = selectedWord === token;
+          return (
+            <Text
+              key={`word-${idx}`}
+              onPress={() => setSelectedWord(token)}
+              onLongPress={() => {
+                setSelectedWord(token);
+                setWordDetails(null);
+                setWordImageError(false);
+                setWordImageIndex(0);
+                setWordSaveStatus('idle');
+                setWordSheetVisible(true);
+                fetchWordDetails(token);
+              }}
+              style={isSelected ? styles.selectedWord : null}
+            >
+              {token}
+            </Text>
+          );
+        })}
+      </Text>
+    );
+
     return (
       <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
         {!isUser && (
           <Image source={getRoleImage(role?.id, 'avatar')} style={styles.messageAvatar} />
         )}
-        <View
-          style={[
-            styles.bubble,
-            isUser ? styles.bubbleUser : styles.bubbleAI,
-          ]}
-        >
-          <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-            {item.body || ''}
-          </Text>
-          {isUser && (
-            <View style={styles.bubbleAvatar} />
-          )}
+        {isUser && <View style={styles.messageAvatarPlaceholder} />}
+        <View style={styles.messageContent}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onLongPress={(event) => handleMessageLongPress(item, event)}
+        delayLongPress={300}
+        onPress={() => setSelectedWord('')}
+      >
+            <View
+              style={[
+                styles.bubble,
+                isUser ? styles.bubbleUser : styles.bubbleAI,
+              ]}
+            >
+              {isUser ? (
+                <>
+                  {quotedText ? (
+                    <View style={styles.messageQuoteBubble}>
+                      <Text style={styles.messageQuoteText}>{quotedText}</Text>
+                    </View>
+                  ) : null}
+                  {renderTokenizedText()}
+                  <Ionicons name="heart" color="#f093a4" size={16} style={styles.bubbleHeart} />
+                </>
+              ) : (
+                <>
+                  {quotedText ? (
+                    <View style={styles.messageQuoteBubble}>
+                      <Text style={styles.messageQuoteText}>{quotedText}</Text>
+                    </View>
+                  ) : null}
+                  {renderTokenizedText()}
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -285,19 +590,19 @@ export default function ConversationScreen({ navigation, route }) {
     );
   }
 
+  const topPadding = Math.max(insets.top - 8, 8);
+  const sheetMaxHeight = Dimensions.get('window').height * 0.75;
+
   // Use role's hero image as chat background
   const backgroundImage = getRoleImage(role?.id, 'heroImage') || getRoleImage(role?.id, 'avatar');
 
   // Add typing indicator to message list when typing
   const listData = isTyping ? [...messages, { type: 'typing', id: 'typing-indicator' }] : messages;
 
+  const bottomPadding = Math.max(insets.bottom, 12);
   return (
-    <ImageBackground
-      source={backgroundImage}
-      style={styles.backgroundImage}
-      imageStyle={styles.backgroundImageStyle}
-    >
-      <SafeAreaView style={styles.container}>
+    <ImageBackground source={backgroundImage} style={styles.backgroundImage} imageStyle={styles.backgroundImageStyle}>
+      <SafeAreaView style={[styles.container, { paddingTop: topPadding, paddingBottom: bottomPadding }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={22} color="#333" />
@@ -310,18 +615,6 @@ export default function ConversationScreen({ navigation, route }) {
               <Text style={styles.moodText}>{role.mood || '想你'}</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.callButton}
-            onPress={() => {
-              navigation.navigate('VoiceCall', {
-                characterId: role.id,
-                characterName: role.name,
-                characterAvatar: getRoleImage(role.id, 'avatar'),
-              });
-            }}
-          >
-            <Ionicons name="call-outline" size={18} color="#f093a4" />
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.settingsButton}
             onPress={() =>
@@ -344,7 +637,7 @@ export default function ConversationScreen({ navigation, route }) {
         <KeyboardAvoidingView
           style={styles.chatArea}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={80}
+          keyboardVerticalOffset={0}
         >
           <FlatList
             ref={listRef}
@@ -382,6 +675,140 @@ export default function ConversationScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+
+        {quotePreview ? (
+          <View style={styles.quotePreview}>
+            <Text style={styles.quotePreviewLabel}>引用</Text>
+            <Text style={styles.quotePreviewText}>{quotePreview}</Text>
+          </View>
+        ) : null}
+
+        {actionMenuVisible && selectedMessage && actionMenuPosition && (
+          <View style={styles.actionMenuOverlay} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.actionMenuBackdrop}
+              activeOpacity={1}
+              onPress={closeActionMenu}
+            />
+            <View
+              style={[
+                styles.actionMenuContainer,
+                { top: actionMenuPosition.top, left: actionMenuPosition.left, width: 260 },
+              ]}
+            >
+              <View style={styles.actionMenuRow}>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handleCopyMessage}>
+                  <Ionicons name="copy-outline" size={20} color="#333" />
+                  <Text style={styles.actionMenuText}>复制</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handleForwardMessage}>
+                  <Ionicons name="arrow-redo-outline" size={20} color="#333" />
+                  <Text style={styles.actionMenuText}>转发</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handleQuoteMessage}>
+                  <Ionicons name="chatbox-ellipses-outline" size={20} color="#333" />
+                  <Text style={styles.actionMenuText}>引用</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handlePlayFromMenu}>
+                  <Ionicons name="volume-high-outline" size={20} color="#333" />
+                  <Text style={styles.actionMenuText}>播放</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionMenuItem} onPress={handleDeleteMessage}>
+                  <Ionicons name="trash-outline" size={20} color="#e55b73" />
+                  <Text style={[styles.actionMenuText, { color: '#e55b73' }]}>删除</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {wordSheetVisible && (
+          <View style={styles.wordSheetOverlay} pointerEvents="box-none">
+            <TouchableOpacity style={styles.wordSheetBackdrop} activeOpacity={1} onPress={() => setWordSheetVisible(false)} />
+            <View style={[styles.wordSheet, { maxHeight: sheetMaxHeight }]}>
+              <View style={styles.wordSheetHeader}>
+                <Text style={styles.wordSheetTitle}>{selectedWord}</Text>
+                <TouchableOpacity onPress={() => setWordSheetVisible(false)}>
+                  <Ionicons name="close" size={22} color="#555" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                contentContainerStyle={[styles.wordSheetContent, { paddingBottom: Math.max(insets.bottom, 12) }]}
+              >
+                {wordSheetLoading || !wordDetails ? (
+                  <View style={styles.wordSheetLoadingRow}>
+                    <ActivityIndicator color="#f093a4" />
+                    <Text style={styles.wordSheetHint}>AI 正在生成词卡…</Text>
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.wordSheetHeaderRow}>
+                      <Text style={styles.wordSheetLabel}>翻译</Text>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          if (!selectedWord) return;
+                          try {
+                            await addVocabItem({
+                              term: selectedWord,
+                              definition: wordDetails?.translation || '',
+                              example: wordDetails?.example || '',
+                              language: 'en',
+                              tags: ['from-chat'],
+                            });
+                            setWordSaveStatus('saved');
+                          } catch (e) {
+                            setWordSaveStatus('error');
+                            console.warn('[WordCard] save vocab failed', e);
+                            Alert.alert('保存失败', e?.message || '存词库时出错');
+                          }
+                        }}
+                        style={[styles.wordSheetSaveBtn, wordSaveStatus === 'saved' && { backgroundColor: '#e7f8ef' }]}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons
+                          name={wordSaveStatus === 'saved' ? 'checkmark-done-outline' : 'bookmark-outline'}
+                          size={18}
+                          color={wordSaveStatus === 'saved' ? '#2d9f6f' : '#c24d72'}
+                        />
+                        <Text style={[styles.wordSheetSaveText, wordSaveStatus === 'saved' && { color: '#2d9f6f' }]}>
+                          {wordSaveStatus === 'saved' ? '已保存' : '存词库'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.wordSheetBody}>{wordDetails.translation}</Text>
+                    <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>例句</Text>
+                    <Text style={styles.wordSheetBody}>{wordDetails.example}</Text>
+                    <Text style={[styles.wordSheetLabel, { marginTop: 10 }]}>图像提示</Text>
+                    {wordDetails.imageUrls && wordDetails.imageUrls[wordImageIndex] && !wordImageError ? (
+                      <Image
+                        source={{ uri: wordDetails.imageUrls[wordImageIndex] }}
+                        style={styles.wordSheetImage}
+                        resizeMode="cover"
+                        onError={() => {
+                          const nextIndex = wordImageIndex + 1;
+                          if (wordDetails.imageUrls[nextIndex]) {
+                            setWordImageIndex(nextIndex);
+                            setWordImageError(false);
+                          } else {
+                            setWordImageError(true);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <View style={[styles.wordSheetImage, { alignItems: 'center', justifyContent: 'center' }]}>
+                        <Text style={styles.wordSheetHint}>图片加载失败/暂无图片</Text>
+                      </View>
+                    )}
+                    <Text style={styles.wordSheetBody}>{wordDetails.imagePrompt}</Text>
+                    <Text style={styles.wordSheetHint}>长按单词可打开此面板，点空白关闭。</Text>
+                  </>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     </ImageBackground>
   );
@@ -398,7 +825,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
     paddingHorizontal: 16,
-    paddingTop: 0,
+    paddingTop: 12,
   },
   loadingContainer: {
     flex: 1,
@@ -468,11 +895,22 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     marginRight: 10,
   },
+  messageAvatarPlaceholder: {
+    width: 34,
+    height: 34,
+    marginRight: 10,
+    opacity: 0,
+  },
+  messageContent: {
+    flexShrink: 1,
+    flexGrow: 0,
+  },
   bubble: {
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 18,
-    maxWidth: '75%',
+    maxWidth: '100%',
+    flexShrink: 1,
   },
   bubbleAI: {
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
@@ -492,14 +930,27 @@ const styles = StyleSheet.create({
     color: '#d46b84',
     fontWeight: '500',
   },
-  bubbleAvatar: {
+  selectedWord: {
+    backgroundColor: '#ffe1eb',
+    color: '#c24d72',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  bubbleHeart: {
     position: 'absolute',
     right: -18,
     bottom: -6,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#4A90E2',
+  },
+  messageQuoteBubble: {
+    marginBottom: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(244, 244, 244, 0.95)',
+  },
+  messageQuoteText: {
+    fontSize: 12,
+    color: '#888',
   },
   typingDotsContainer: {
     flexDirection: 'row',
@@ -521,7 +972,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    marginBottom: 20,
+    marginTop: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.92)',
   },
   inputIcon: {
@@ -548,16 +999,6 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     opacity: 0.6,
   },
-  callButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: '#f1d7de',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
   settingsButton: {
     width: 34,
     height: 34,
@@ -580,5 +1021,142 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     color: '#f093a4',
     fontSize: 12,
+  },
+  actionMenuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-start',
+  },
+  actionMenuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  actionMenuContainer: {
+    position: 'absolute',
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+  },
+  actionMenuRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  actionMenuItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  actionMenuText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#333',
+  },
+  wordSheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+  },
+  wordSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  wordSheet: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -4 },
+  },
+  wordSheetContent: {
+    paddingTop: 4,
+  },
+  wordSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  wordSheetHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  wordSheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  wordSheetLabel: {
+    fontSize: 12,
+    color: '#c24d72',
+    fontWeight: '700',
+  },
+  wordSheetBody: {
+    fontSize: 14,
+    color: '#444',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  wordSheetSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#ffe7ef',
+  },
+  wordSheetSaveText: {
+    marginLeft: 6,
+    color: '#c24d72',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  wordSheetHint: {
+    marginTop: 12,
+    fontSize: 12,
+    color: '#999',
+  },
+  wordSheetLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  wordSheetImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 12,
+    marginTop: 6,
+    marginBottom: 4,
+    backgroundColor: '#ffeef4',
+  },
+  quotePreview: {
+    marginHorizontal: 8,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  quotePreviewLabel: {
+    fontSize: 11,
+    color: '#f093a4',
+    marginBottom: 2,
+  },
+  quotePreviewText: {
+    fontSize: 12,
+    color: '#555',
   },
 });

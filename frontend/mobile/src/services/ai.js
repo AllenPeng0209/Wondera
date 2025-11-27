@@ -19,8 +19,16 @@ async function callQwen(messages, systemPrompt) {
   }
 }
 
-function prepareSystemPrompt(role) {
-  return `请严格扮演“${role.name}”，具备以下设定：${role.persona}`;
+function prepareSystemPrompt(role, userProfile) {
+  const userParts = [];
+  if (userProfile?.nickname) userParts.push(`对方昵称：${userProfile.nickname}`);
+  if (userProfile?.mbti) userParts.push(`MBTI：${userProfile.mbti}`);
+  if (userProfile?.zodiac) userParts.push(`星座：${userProfile.zodiac}`);
+  if (userProfile?.birthday) userParts.push(`生日：${userProfile.birthday}`);
+  const userContext = userParts.length
+    ? `用户画像：${userParts.join('，')}。对话时自然地体现和呼应这些特点，保持亲密感，但不要反复背诵或显得刻意。`
+    : '';
+  return `请严格扮演“${role.name}”，具备以下设定：${role.persona}。${userContext}回复要求：只用口语化第一人称对话，不写旁白、动作或场景描写；不要使用括号/星号等舞台指令；保持简短，单条回复尽量控制在30-60个汉字。`;
 }
 
 function buildMessagePayload(history) {
@@ -28,7 +36,9 @@ function buildMessagePayload(history) {
   const selected = history.slice(-MAX_HISTORY);
   return selected.map((msg) => ({
     role: msg.sender === 'user' ? 'user' : 'assistant',
-    content: msg.body,
+    content: msg.quotedBody
+      ? `【引用】${msg.quotedBody}\n\n${msg.body}`
+      : msg.body,
   }));
 }
 
@@ -44,9 +54,9 @@ async function fallbackFromScript(conversation, role) {
   return { text: line, fallback: true, nextCursor };
 }
 
-export async function generateAiReply({ conversation, role, history }) {
+export async function generateAiReply({ conversation, role, history, userProfile }) {
   try {
-    const text = await callQwen(buildMessagePayload(history), prepareSystemPrompt(role));
+    const text = await callQwen(buildMessagePayload(history), prepareSystemPrompt(role, userProfile));
     if (!text) {
       return fallbackFromScript(conversation, role);
     }
@@ -55,4 +65,46 @@ export async function generateAiReply({ conversation, role, history }) {
     console.warn('[AI] qwen 调用失败，回退脚本：', error?.message || error);
     return fallbackFromScript(conversation, role);
   }
+}
+
+export async function getWordCard(word) {
+  if (!word || !word.trim()) throw new Error('word is required');
+  const system = 'You are a bilingual English-Chinese word helper. Output concise JSON with translation, example, and an imagePrompt for illustration. Keep it short.';
+  const prompt = `Word: ${word}\nReturn JSON like {"translation":"简短中文义","example":"Short English example using the word","imagePrompt":"Short image description"}.`;
+  const raw = await sendBailianMessage([{ role: 'user', content: prompt }], { system, model: 'qwen-plus' });
+  try {
+    const jsonStart = raw.indexOf('{');
+    const jsonEnd = raw.lastIndexOf('}');
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+      const imgPrompt = parsed.imagePrompt || parsed.image_prompt || `A simple illustration of ${word}.`;
+      const query = encodeURIComponent(imgPrompt || word);
+      const imageUrls = [
+        `https://source.unsplash.com/featured/800x600/?${query}&sig=${Date.now()}`,
+        `https://source.unsplash.com/featured/800x600/?${encodeURIComponent(word)}&sig=${Date.now() + 1}`,
+        `https://loremflickr.com/800/600/${encodeURIComponent(word)}`,
+        `https://dummyimage.com/800x600/ffe1eb/333&text=${encodeURIComponent(word)}`,
+      ];
+      return {
+        translation: parsed.translation || `示例翻译：${word}`,
+        example: parsed.example || `Example: use ${word} in a sentence.`,
+        imagePrompt: imgPrompt,
+        imageUrl: imageUrls[0],
+        imageUrls,
+      };
+    }
+  } catch (e) {
+    console.warn('[AI] parse word card failed', e);
+  }
+  return {
+    translation: `示例翻译：${word}`,
+    example: `Example: use ${word} in a sentence.`,
+    imagePrompt: `A simple illustration of ${word}.`,
+    imageUrl: `https://source.unsplash.com/featured/800x600/?${encodeURIComponent(word)}&sig=${Date.now()}`,
+    imageUrls: [
+      `https://source.unsplash.com/featured/800x600/?${encodeURIComponent(word)}&sig=${Date.now()}`,
+      `https://loremflickr.com/800/600/${encodeURIComponent(word)}`,
+      `https://dummyimage.com/800x600/ffe1eb/333&text=${encodeURIComponent(word)}`,
+    ],
+  };
 }

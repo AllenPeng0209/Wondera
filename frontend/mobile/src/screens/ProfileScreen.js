@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -15,15 +14,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getUserSettings, updateUserSettings, updateRolesUIFromSeeds } from '../storage/db';
+import { getUserSettings, updateUserSettings } from '../storage/db';
 
 const quickLinks = [
-  { id: 'wallet', label: '学习币钱包', icon: 'wallet-outline', route: 'Wallet' },
+  { id: 'wallet', label: '心动币钱包', icon: 'wallet-outline', route: 'Wallet' },
   { id: 'api', label: 'API 设置', icon: 'code-outline', route: 'ApiSettings' },
   { id: 'bias', label: '聊天偏好设置', icon: 'options-outline', route: 'PreferenceSettings' },
   { id: 'backup', label: '聊天记录备份', icon: 'cloud-upload-outline', route: null },
   { id: 'feedback', label: '功能许愿和反馈', icon: 'chatbubble-ellipses-outline', route: null },
-  { id: 'updateRoles', label: '🔄 更新角色信息', icon: 'refresh-outline', route: null },
 ];
 
 export default function ProfileScreen({ navigation }) {
@@ -60,21 +58,9 @@ export default function ProfileScreen({ navigation }) {
     closeEditor();
   };
 
-  const handleUpdateRoles = async () => {
-    try {
-      await updateRolesUIFromSeeds();
-      Alert.alert('成功', '角色信息已更新！请返回发现页查看。');
-    } catch (error) {
-      Alert.alert('错误', '更新失败：' + error.message);
-    }
-  };
-
-  const handleQuickLinkPress = (item) => {
-    if (item.id === 'updateRoles') {
-      handleUpdateRoles();
-    } else if (item.route) {
-      navigation.navigate(item.route);
-    }
+  const handleLogout = async () => {
+    await updateUserSettings({ is_logged_in: 0 });
+    navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
   };
 
   if (loading || !settings) {
@@ -96,9 +82,9 @@ export default function ProfileScreen({ navigation }) {
             source={{ uri: 'https://api.dicebear.com/7.x/lorelei/svg?seed=MOMOMOMO' }}
             style={styles.heroAvatar}
           />
-          <Text style={styles.heroName}>{settings.nickname || '语言学习者'}</Text>
+          <Text style={styles.heroName}>{settings.nickname || '心动旅人'}</Text>
           <TouchableOpacity style={styles.statusButton}>
-            <Ionicons name="star-outline" size={14} color="#FFB800" />
+            <Ionicons name="heart-outline" size={14} color="#f093a4" />
             <Text style={styles.statusText}>+ 状态</Text>
           </TouchableOpacity>
         </LinearGradient>
@@ -108,19 +94,12 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity
               key={item.id}
               style={styles.settingRow}
-              activeOpacity={0.8}
-              onPress={() => handleQuickLinkPress(item)}
+              activeOpacity={item.route ? 0.8 : 1}
+              onPress={() => item.route && navigation.navigate(item.route)}
             >
               <View style={styles.settingLeft}>
-                <Ionicons
-                  name={item.icon}
-                  size={18}
-                  color={(item.route || item.id === 'updateRoles') ? '#f093a4' : '#cfcfcf'}
-                />
-                <Text style={[
-                  styles.settingLabel,
-                  !(item.route || item.id === 'updateRoles') && { color: '#cfcfcf' }
-                ]}>{item.label}</Text>
+                <Ionicons name={item.icon} size={18} color={item.route ? '#f093a4' : '#cfcfcf'} />
+                <Text style={[styles.settingLabel, !item.route && { color: '#cfcfcf' }]}>{item.label}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#d1d1d1" />
             </TouchableOpacity>
@@ -129,7 +108,7 @@ export default function ProfileScreen({ navigation }) {
 
         <LinearGradient colors={["#fff8ec", "#ffe7d1"]} style={styles.banner}>
           <View>
-            <Text style={styles.bannerTitle}>免费领取学习币！</Text>
+            <Text style={styles.bannerTitle}>免费领取心动币！</Text>
             <Text style={styles.bannerDesc}>邀请好友、或发小红书笔记得次数奖励</Text>
             <Text style={styles.bannerBalance}>当前余额：{settings.currency_balance || 0} 枚</Text>
           </View>
@@ -169,6 +148,11 @@ export default function ProfileScreen({ navigation }) {
           onSave={saveEditor}
           onChangeValue={(value) => setEditor((prev) => ({ ...prev, value }))}
         />
+
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.85}>
+          <Ionicons name="exit-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.logoutText}>退出登录</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -288,13 +272,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: '#FFF8E1',
+    backgroundColor: '#ffeaf0',
     flexDirection: 'row',
     alignItems: 'center',
   },
   statusText: {
     marginLeft: 6,
-    color: '#FFB800',
+    color: '#f093a4',
     fontWeight: '600',
   },
   section: {
@@ -460,5 +444,24 @@ const styles = StyleSheet.create({
   genderTextActive: {
     color: '#f093a4',
     fontWeight: '600',
+  },
+  logoutButton: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#f093a4',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  logoutText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 15,
   },
 });

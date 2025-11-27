@@ -78,6 +78,23 @@ export default function ChatListScreen({ navigation }) {
     </Swipeable>
   );
 
+  const renderListHeader = () => (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      style={styles.discoverCard}
+      onPress={() => navigation.navigate('Discover')}
+    >
+      <View style={styles.discoverTextBlock}>
+        <Text style={styles.discoverLabel}>发现 · 心动推荐</Text>
+        <Text style={styles.discoverTitle}>去看看新角色</Text>
+        <Text style={styles.discoverSubtitle}>Tap to explore</Text>
+      </View>
+      <View style={styles.discoverIconWrapper}>
+        <Feather name="arrow-right" size={18} color="#fff" />
+      </View>
+    </TouchableOpacity>
+  );
+
   const topPadding = Math.max(insets.top - 8, 8);
   return (
     <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}> 
@@ -96,6 +113,7 @@ export default function ChatListScreen({ navigation }) {
         data={conversations}
         keyExtractor={(item) => item.id}
         renderItem={renderConversation}
+        ListHeaderComponent={renderListHeader}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       />
@@ -141,6 +159,49 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 120,
+  },
+  discoverCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffe9f1',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ffd4e4',
+  },
+  discoverTextBlock: {
+    flex: 1,
+    marginRight: 12,
+  },
+  discoverLabel: {
+    fontSize: 12,
+    color: '#c24d72',
+    marginBottom: 6,
+    fontWeight: '600',
+  },
+  discoverTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#3f3f3f',
+    marginBottom: 4,
+  },
+  discoverSubtitle: {
+    fontSize: 13,
+    color: '#8c8c8c',
+  },
+  discoverIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f093a4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#f093a4',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 10,
   },
   chatRow: {
     flexDirection: 'row',
