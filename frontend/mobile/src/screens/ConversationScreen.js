@@ -8,6 +8,7 @@ import {
   Image,
   ImageBackground,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   Share,
@@ -25,16 +26,33 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   addMessage,
   addVocabItem,
+  addRoleProgress,
+  bumpDailyProgress,
   getConversationDetail,
   getMessages,
   getRoleSettings,
+  getRoleProgress,
+  getDailyLearningStats,
   getUserSettings,
   saveMessageAudio,
   deleteMessage,
+  DAILY_VOCAB_TARGET,
 } from '../storage/db';
 import { generateAiReply, getWordCard } from '../services/ai';
 import { synthesizeQwenTts } from '../services/tts';
 import { getRoleImage } from '../data/images';
+
+const NEGATIVE_CUES = ['讨厌', '滚', '闭嘴', '生气', '气死', '别烦', '不理你', 'hate you', 'stupid', 'idiot', 'angry', 'annoying', 'shut up', 'fuck'];
+
+function detectNegativeTone(text) {
+  if (!text) return 0;
+  const lower = text.toLowerCase();
+  let hits = 0;
+  for (const cue of NEGATIVE_CUES) {
+    if (lower.includes(cue)) hits += 1;
+  }
+  return hits;
+}
 
 export default function ConversationScreen({ navigation, route }) {
   const { conversationId, shouldResendGreeting } = route.params;
@@ -62,6 +80,9 @@ export default function ConversationScreen({ navigation, route }) {
   const [quoteSource, setQuoteSource] = useState(null);
   const [actionMenuPosition, setActionMenuPosition] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
+  const [roleProgress, setRoleProgress] = useState(null);
+  const [progressVisible, setProgressVisible] = useState(false);
+  const [dailyStats, setDailyStats] = useState(null);
   const listRef = useRef(null);
   const messagesRef = useRef([]);
   const greetingSentRef = useRef(false);
@@ -81,6 +102,9 @@ export default function ConversationScreen({ navigation, route }) {
         language: 'en',
         tags: ['from-chat'],
       });
+      bumpDailyProgress({ vocabNewDelta: 1 })
+        .then((stats) => setDailyStats(stats))
+        .catch((error) => console.warn('[Conversation] bumpDailyProgress vocab failed', error));
     } catch (error) {
       console.warn('[WordCard] fetch failed', error?.message || error);
       setWordDetails({
@@ -111,11 +135,13 @@ export default function ConversationScreen({ navigation, route }) {
       try {
         const profile = await getUserSettings();
         setUserProfile(profile || null);
+
       } catch (error) {
         console.warn('[Conversation] load user settings failed', error);
       }
     })();
   }, []);
+
 
   useEffect(() => {
     async function loadData() {
@@ -135,6 +161,7 @@ export default function ConversationScreen({ navigation, route }) {
       if (role?.id) {
         const config = await getRoleSettings(role.id);
         setRoleConfig(config);
+ 
       }
     }
     loadRoleConfig();
@@ -260,6 +287,33 @@ export default function ConversationScreen({ navigation, route }) {
     setMessages(nextHistory);
     messagesRef.current = nextHistory;
 
+    bumpDailyProgress({ messagesDelta: 1 })
+      .then(async (stats) => {
+        setDailyStats(stats);
+        try {
+          const refreshed = await getUserSettings();
+          setUserProfile(refreshed || null);
+        } catch (e) {
+          console.warn('[Conversation] refresh user settings failed', e);
+        }
+      })
+      .catch((error) => console.warn('[Conversation] bumpDailyProgress failed', error));
+
+    if (role?.id) {
+      const expDelta = Math.min(18, 8 + Math.floor(content.length / 30));
+      const negativeHits = detectNegativeTone(content);
+      // 负向情绪会扣亲密，最多 -4；否则正向加成（最少 +1，最长消息上限 4）
+      const affectionDelta = negativeHits
+        ? -Math.min(4, 1 + negativeHits)
+        : Math.min(4, Math.max(1, Math.floor(content.length / 40)));
+      try {
+        const progress = await addRoleProgress(role.id, { expDelta, affectionDelta });
+        if (progress) setRoleProgress(progress);
+      } catch (error) {
+        console.warn('[Conversation] addRoleProgress failed', error);
+      }
+    }
+
     setSending(true);
     try {
       const aiResult = await generateAiReply({
@@ -282,58 +336,58 @@ export default function ConversationScreen({ navigation, route }) {
   };
 
   // Typing indicator bubble component
-  const TypingBubble = () => {
-    const dot1Anim = useRef(new Animated.Value(0)).current;
-    const dot2Anim = useRef(new Animated.Value(0)).current;
-    const dot3Anim = useRef(new Animated.Value(0)).current;
+const TypingBubble = () => {
+  const dot1Anim = useRef(new Animated.Value(0)).current;
+  const dot2Anim = useRef(new Animated.Value(0)).current;
+  const dot3Anim = useRef(new Animated.Value(0)).current;
 
-    useEffect(() => {
-      const createDotAnimation = (animValue, delay) => {
-        return Animated.loop(
-          Animated.sequence([
-            Animated.delay(delay),
-            Animated.timing(animValue, {
-              toValue: -6,
-              duration: 400,
-              useNativeDriver: true,
-            }),
-            Animated.timing(animValue, {
-              toValue: 0,
-              duration: 400,
-              useNativeDriver: true,
-            }),
-          ])
-        );
-      };
+  useEffect(() => {
+    const createDotAnimation = (animValue, delay) => {
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(animValue, {
+            toValue: -6,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(animValue, {
+            toValue: 0,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+    };
 
-      const dot1 = createDotAnimation(dot1Anim, 0);
-      const dot2 = createDotAnimation(dot2Anim, 150);
-      const dot3 = createDotAnimation(dot3Anim, 300);
+    const dot1 = createDotAnimation(dot1Anim, 0);
+    const dot2 = createDotAnimation(dot2Anim, 150);
+    const dot3 = createDotAnimation(dot3Anim, 300);
 
-      dot1.start();
-      dot2.start();
-      dot3.start();
+    dot1.start();
+    dot2.start();
+    dot3.start();
 
-      return () => {
-        dot1.stop();
-        dot2.stop();
-        dot3.stop();
-      };
-    }, [dot1Anim, dot2Anim, dot3Anim]);
+    return () => {
+      dot1.stop();
+      dot2.stop();
+      dot3.stop();
+    };
+  }, [dot1Anim, dot2Anim, dot3Anim]);
 
-    return (
-      <View style={styles.messageRow}>
-        <Image source={getRoleImage(role?.id, 'avatar')} style={styles.messageAvatar} />
-        <View style={[styles.bubble, styles.bubbleAI]}>
-          <View style={styles.typingDotsContainer}>
-            <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot1Anim }] }]} />
-            <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot2Anim }] }]} />
-            <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot3Anim }] }]} />
-          </View>
+  return (
+    <View style={styles.messageRow}>
+      <Image source={getRoleImage(role?.id, 'avatar')} style={styles.messageAvatar} />
+      <View style={[styles.bubble, styles.bubbleAI]}>
+        <View style={styles.typingDotsContainer}>
+          <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot1Anim }] }]} />
+          <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot2Anim }] }]} />
+          <Animated.View style={[styles.typingDot, { transform: [{ translateY: dot3Anim }] }]} />
         </View>
       </View>
-    );
-  };
+    </View>
+  );
+};
 
   const handlePlayTts = useCallback(
     async (message) => {
@@ -607,14 +661,16 @@ export default function ConversationScreen({ navigation, route }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={22} color="#333" />
           </TouchableOpacity>
-          <Image source={getRoleImage(role.id, 'avatar')} style={styles.headerAvatar} />
-          <View style={styles.headerInfo}>
-            <Text style={styles.headerName}>{role.name || ''}</Text>
-            <View style={styles.moodPill}>
-              <Ionicons name="leaf-outline" color="#f093a4" size={12} />
-              <Text style={styles.moodText}>{role.mood || '想你'}</Text>
+          <TouchableOpacity style={styles.headerProfile} onPress={() => setProgressVisible(true)} activeOpacity={0.8}>
+            <Image source={getRoleImage(role.id, 'avatar')} style={styles.headerAvatar} />
+            <View style={styles.headerInfo}>
+              <Text style={styles.headerName}>{role.name || ''}</Text>
+              <View style={styles.moodPill}>
+                <Ionicons name="leaf-outline" color="#f093a4" size={12} />
+                <Text style={styles.moodText}>{role.mood || '想你'}</Text>
+              </View>
             </View>
-          </View>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.settingsButton}
             onPress={() =>
@@ -627,6 +683,7 @@ export default function ConversationScreen({ navigation, route }) {
             <Ionicons name="settings-outline" size={18} color="#f093a4" />
           </TouchableOpacity>
         </View>
+
         {isBlocked && (
           <View style={styles.blockBanner}>
             <Ionicons name="alert-circle-outline" size={16} color="#f093a4" />
@@ -809,6 +866,67 @@ export default function ConversationScreen({ navigation, route }) {
             </View>
           </View>
         )}
+
+        <Modal visible={progressVisible} transparent animationType="fade" onRequestClose={() => setProgressVisible(false)}>
+          <TouchableOpacity style={styles.progressOverlay} activeOpacity={1} onPress={() => setProgressVisible(false)}>
+            <View style={styles.progressCard}>
+              <View style={styles.progressHeader}>
+                <Image source={getRoleImage(role.id, 'avatar')} style={styles.progressAvatar} />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.progressTitle}>{role.name || '角色'}</Text>
+                  <Text style={styles.progressSubtitle}>{role.mood || '想你'}</Text>
+                </View>
+                <TouchableOpacity onPress={() => setProgressVisible(false)}>
+                  <Ionicons name="close" size={18} color="#999" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.progressBlock}>
+                <Text style={styles.progressLabel}>亲密等级 Lv.{roleProgress?.affection_level || 1}</Text>
+                <View style={styles.progressBarBg}>
+                  <View
+                    style={[
+                      styles.progressBarFillAffection,
+                      {
+                        width: `${Math.min(
+                          100,
+                          Math.round(
+                            ((roleProgress?.affection || 0) / Math.max(1, roleProgress?.next_affection_threshold || 1)) * 100
+                          )
+                        )}%`,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressHint}>{`${roleProgress?.affection || 0}/${roleProgress?.next_affection_threshold || 0}`}</Text>
+              </View>
+
+            <View style={styles.progressSummaryRow}>
+              <View style={styles.progressSummaryItem}>
+                <Ionicons name="flame" size={14} color="#f093a4" />
+                <Text style={styles.progressSummaryText}>连击 {userProfile?.streak_current || 0}</Text>
+              </View>
+              <View style={styles.progressSummaryItem}>
+                <Ionicons name="trophy-outline" size={14} color="#f7a26a" />
+                <Text style={styles.progressSummaryText}>最佳 {userProfile?.streak_best || 0}</Text>
+              </View>
+            </View>
+
+            <View style={styles.progressSummaryRow}>
+              <View style={styles.progressSummaryItem}>
+                <Ionicons name="book-outline" size={14} color="#7a9cff" />
+                <Text style={styles.progressSummaryText}>
+                  今日词汇 {dailyStats?.vocab_new || 0}/{DAILY_VOCAB_TARGET}
+                </Text>
+              </View>
+              <View style={styles.progressSummaryItem}>
+                <Ionicons name="chatbubble-ellipses-outline" size={14} color="#6fcf97" />
+                <Text style={styles.progressSummaryText}>消息 {dailyStats?.messages_count || 0}/3</Text>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
       </SafeAreaView>
     </ImageBackground>
   );
@@ -836,6 +954,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
+  },
+  headerBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  headerProfile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: 8,
   },
   backButton: {
     width: 32,
@@ -874,6 +1005,22 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontSize: 12,
     color: '#f093a4',
+  },
+  badgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  badgeText: {
+    marginLeft: 6,
+    fontSize: 12,
+    color: '#444',
+    fontWeight: '700',
   },
   chatArea: {
     flex: 1,
@@ -1158,5 +1305,87 @@ const styles = StyleSheet.create({
   quotePreviewText: {
     fontSize: 12,
     color: '#555',
+  },
+  progressOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  progressCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  progressAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+  },
+  progressTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#333',
+  },
+  progressSubtitle: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 2,
+  },
+  progressBlock: {
+    marginBottom: 12,
+  },
+  progressLabel: {
+    fontSize: 12,
+    color: '#7a6276',
+    fontWeight: '700',
+  },
+  progressBarBg: {
+    marginTop: 6,
+    height: 8,
+    borderRadius: 8,
+    backgroundColor: '#f2eaf0',
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#f093a4',
+  },
+  progressBarFillAffection: {
+    height: '100%',
+    backgroundColor: '#f7a26a',
+  },
+  progressHint: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#8f8f8f',
+  },
+  progressSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  progressSummaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressSummaryText: {
+    marginLeft: 6,
+    fontSize: 12,
+    color: '#555',
+    fontWeight: '700',
   },
 });

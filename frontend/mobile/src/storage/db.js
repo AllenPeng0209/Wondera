@@ -7,12 +7,31 @@ const uniqueId = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random()
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_EASE = 1.3;
 const MAX_EASE = 2.8;
+const BASE_ROLE_LEVEL_EXP = 50;
+const ROLE_AFFECTION_THRESHOLDS = [0, 60, 150, 320, 520, 800];
+const DAILY_VOCAB_TARGET = 10;
+
+function getDayKey(ts = Date.now()) {
+  const d = new Date(ts);
+  const year = d.getFullYear();
+  const month = `${d.getMonth() + 1}`.padStart(2, '0');
+  const day = `${d.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function getDatabase() {
   if (!databasePromise) {
     databasePromise = SQLite.openDatabaseAsync('dreamate.db');
   }
   return databasePromise;
+}
+
+function getPrevDayKey(dayKey) {
+  if (!dayKey) return null;
+  const d = new Date(`${dayKey}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() - 1);
+  return getDayKey(d.getTime());
 }
 
 async function run(sql, params = []) {
@@ -163,6 +182,9 @@ export async function initDatabase() {
   await ensureColumn('user_settings', 'swipe_reply', 'INTEGER DEFAULT 0');
   await ensureColumn('user_settings', 'wait_to_reply', 'INTEGER DEFAULT 0');
   await ensureColumn('user_settings', 'affection_points', 'INTEGER DEFAULT 0');
+  await ensureColumn('user_settings', 'streak_current', 'INTEGER DEFAULT 0');
+  await ensureColumn('user_settings', 'streak_best', 'INTEGER DEFAULT 0');
+  await ensureColumn('user_settings', 'streak_last_day', 'TEXT');
   await ensureColumn('user_settings', 'mbti', 'TEXT');
   await ensureColumn('user_settings', 'zodiac', 'TEXT');
   await ensureColumn('user_settings', 'birthday', 'TEXT');
@@ -210,6 +232,10 @@ export async function initDatabase() {
   await ensureColumn('role_settings', 'memory_limit', 'INTEGER DEFAULT 10');
   await ensureColumn('role_settings', 'auto_summary', 'INTEGER DEFAULT 1');
   await ensureColumn('role_settings', 'is_blocked', 'INTEGER DEFAULT 0');
+  await ensureColumn('role_settings', 'level', 'INTEGER DEFAULT 1');
+  await ensureColumn('role_settings', 'exp', 'INTEGER DEFAULT 0');
+  await ensureColumn('role_settings', 'affection', 'INTEGER DEFAULT 0');
+  await ensureColumn('role_settings', 'affection_level', 'INTEGER DEFAULT 1');
 
   await run(`CREATE TABLE IF NOT EXISTS daily_theater_tasks (
       id TEXT PRIMARY KEY,
@@ -231,6 +257,24 @@ export async function initDatabase() {
   await ensureColumn('daily_theater_tasks', 'kickoff_prompt', 'TEXT');
   await ensureColumn('daily_theater_tasks', 'difficulty', 'TEXT');
   await ensureColumn('daily_theater_tasks', 'target_words', 'TEXT');
+
+  await run(`CREATE TABLE IF NOT EXISTS daily_learning_stats (
+      day_key TEXT PRIMARY KEY,
+      messages_count INTEGER DEFAULT 0,
+      target_hits INTEGER DEFAULT 0,
+      vocab_new INTEGER DEFAULT 0,
+      vocab_review INTEGER DEFAULT 0,
+      tasks_completed INTEGER DEFAULT 0,
+      completed INTEGER DEFAULT 0,
+      created_at INTEGER,
+      updated_at INTEGER
+    );`);
+  await ensureColumn('daily_learning_stats', 'messages_count', 'INTEGER DEFAULT 0');
+  await ensureColumn('daily_learning_stats', 'target_hits', 'INTEGER DEFAULT 0');
+  await ensureColumn('daily_learning_stats', 'vocab_new', 'INTEGER DEFAULT 0');
+  await ensureColumn('daily_learning_stats', 'vocab_review', 'INTEGER DEFAULT 0');
+  await ensureColumn('daily_learning_stats', 'tasks_completed', 'INTEGER DEFAULT 0');
+  await ensureColumn('daily_learning_stats', 'completed', 'INTEGER DEFAULT 0');
 
   await seedInitialData();
 }
@@ -496,10 +540,7 @@ export async function updateUserSettings(updates) {
 }
 
 async function ensureRoleSettings(roleId) {
-  await run(
-    'INSERT OR IGNORE INTO role_settings (role_id, allow_emoji, allow_knock, max_replies, persona_note, expression_style, catchphrase, user_personality) VALUES (?, 1, 1, 5, ?, ?, ?, ?);',
-    [roleId, '', '', '', '']
-  );
+  await run('INSERT OR IGNORE INTO role_settings (role_id) VALUES (?);', [roleId]);
 }
 
 export async function getRoleSettings(roleId) {
@@ -516,6 +557,173 @@ export async function updateRoleSettings(roleId, updates) {
   const values = keys.map((key) => updates[key]);
   values.push(roleId);
   await run(`UPDATE role_settings SET ${assignments} WHERE role_id = ?;`, values);
+}
+
+function calculateNextLevelExp(level = 1) {
+  const safeLevel = Math.max(1, level);
+  return Math.round(BASE_ROLE_LEVEL_EXP * Math.pow(safeLevel, 1.5));
+}
+
+function calculateAffectionLevel(affection = 0) {
+  let level = 1;
+  for (let i = 1; i < ROLE_AFFECTION_THRESHOLDS.length; i += 1) {
+    if (affection >= ROLE_AFFECTION_THRESHOLDS[i]) {
+      level = i + 1;
+    } else {
+      break;
+    }
+  }
+
+  const cap = ROLE_AFFECTION_THRESHOLDS[ROLE_AFFECTION_THRESHOLDS.length - 1];
+  if (affection > cap) {
+    const extraLevels = Math.floor((affection - cap) / 300);
+    level += extraLevels;
+  }
+
+  return level;
+}
+
+function getNextAffectionThreshold(level = 1) {
+  if (level < ROLE_AFFECTION_THRESHOLDS.length) return ROLE_AFFECTION_THRESHOLDS[level];
+  const cap = ROLE_AFFECTION_THRESHOLDS[ROLE_AFFECTION_THRESHOLDS.length - 1];
+  const extraLevels = level - ROLE_AFFECTION_THRESHOLDS.length + 1;
+  return cap + extraLevels * 300;
+}
+
+export async function addRoleProgress(roleId, { expDelta = 0, affectionDelta = 0 } = {}) {
+  if (!roleId) return null;
+  await ensureRoleSettings(roleId);
+  const settings = await getRoleSettings(roleId);
+
+  let level = settings?.level || 1;
+  let exp = Math.max(0, (settings?.exp || 0) + expDelta);
+  let affection = Math.max(0, (settings?.affection || 0) + affectionDelta);
+  let leveledUp = false;
+  let upgradedLevels = 0;
+
+  while (exp >= calculateNextLevelExp(level)) {
+    exp -= calculateNextLevelExp(level);
+    level += 1;
+    leveledUp = true;
+    upgradedLevels += 1;
+  }
+
+  const affection_level = calculateAffectionLevel(affection);
+  await updateRoleSettings(roleId, { level, exp, affection, affection_level });
+
+  return {
+    level,
+    exp,
+    affection,
+    affection_level,
+    leveledUp,
+    upgradedLevels,
+    next_level_exp: calculateNextLevelExp(level),
+    next_affection_threshold: getNextAffectionThreshold(affection_level),
+  };
+}
+
+export async function getRoleProgress(roleId) {
+  if (!roleId) return null;
+  await ensureRoleSettings(roleId);
+  const settings = await getRoleSettings(roleId);
+  const level = settings?.level || 1;
+  const exp = settings?.exp || 0;
+  const affection = settings?.affection || 0;
+  const affection_level = settings?.affection_level || 1;
+
+  return {
+    level,
+    exp,
+    affection,
+    affection_level,
+    next_level_exp: calculateNextLevelExp(level),
+    next_affection_threshold: getNextAffectionThreshold(affection_level),
+  };
+}
+
+async function getDailyLearningStatsInternal(dayKey = getDayKey()) {
+  let row = await getFirst('SELECT * FROM daily_learning_stats WHERE day_key = ? LIMIT 1;', [dayKey]);
+  if (!row) {
+    const ts = now();
+    await run(
+      `INSERT OR IGNORE INTO daily_learning_stats (day_key, messages_count, target_hits, vocab_new, vocab_review, tasks_completed, completed, created_at, updated_at)
+       VALUES (?, 0, 0, 0, 0, 0, 0, ?, ?);`,
+      [dayKey, ts, ts]
+    );
+    row = await getFirst('SELECT * FROM daily_learning_stats WHERE day_key = ? LIMIT 1;', [dayKey]);
+  }
+  return row;
+}
+
+async function applyStreak(dayKey, stats) {
+  if (!dayKey || !stats) return stats;
+  const isComplete =
+    stats.completed ||
+    (stats.tasks_completed && stats.tasks_completed > 0) ||
+    (stats.messages_count && stats.messages_count >= 3);
+  if (!isComplete) return stats;
+
+  const user = await getUserSettings();
+  const lastDay = user?.streak_last_day;
+  const prevDay = getPrevDayKey(dayKey);
+  if (lastDay === dayKey) return stats;
+
+  let streakCurrent = user?.streak_current || 0;
+  if (lastDay === prevDay) {
+    streakCurrent += 1;
+  } else {
+    streakCurrent = 1;
+  }
+  const streakBest = Math.max(user?.streak_best || 0, streakCurrent);
+  await updateUserSettings({ streak_current: streakCurrent, streak_best: streakBest, streak_last_day: dayKey });
+  return stats;
+}
+
+export async function getDailyLearningStats(dayKey = getDayKey()) {
+  const row = await getDailyLearningStatsInternal(dayKey);
+  return row;
+}
+
+export async function bumpDailyProgress({
+  dayKey = getDayKey(),
+  messagesDelta = 0,
+  targetHitsDelta = 0,
+  vocabNewDelta = 0,
+  vocabReviewDelta = 0,
+  taskCompleted = false,
+} = {}) {
+  const current = await getDailyLearningStatsInternal(dayKey);
+
+  const messages_count = Math.max(0, (current?.messages_count || 0) + messagesDelta);
+  const target_hits = Math.max(0, (current?.target_hits || 0) + targetHitsDelta);
+  const vocab_new = Math.max(0, (current?.vocab_new || 0) + vocabNewDelta);
+  const vocab_review = Math.max(0, (current?.vocab_review || 0) + vocabReviewDelta);
+  const tasks_completed = Math.max(0, (current?.tasks_completed || 0) + (taskCompleted ? 1 : 0));
+  const shouldComplete = taskCompleted || tasks_completed > 0 || messages_count >= 3;
+  const completed = shouldComplete ? 1 : current?.completed || 0;
+  const ts = now();
+
+  await run(
+    `UPDATE daily_learning_stats
+     SET messages_count = ?, target_hits = ?, vocab_new = ?, vocab_review = ?, tasks_completed = ?, completed = ?, updated_at = ?
+     WHERE day_key = ?;`,
+    [messages_count, target_hits, vocab_new, vocab_review, tasks_completed, completed, ts, dayKey]
+  );
+
+  const updated = {
+    ...current,
+    messages_count,
+    target_hits,
+    vocab_new,
+    vocab_review,
+    tasks_completed,
+    completed,
+    updated_at: ts,
+  };
+
+  await applyStreak(dayKey, updated);
+  return updated;
 }
 
 export async function clearConversationMessages(conversationId) {
@@ -847,6 +1055,8 @@ export async function saveVocabAudio(id, audioUrl) {
   await run('UPDATE vocab_items SET audio_url = ?, updated_at = ? WHERE id = ?;', [audioUrl, now(), id]);
 }
 
+export { DAILY_VOCAB_TARGET };
+
 // -------------- Daily Theater --------------
 
 const THEATER_POOL = [
@@ -1067,5 +1277,15 @@ export async function completeDailyTask(taskId) {
   const current = await getUserSettings();
   const nextAffection = (current?.affection_points || 0) + (task.reward_points || 5);
   await updateUserSettings({ affection_points: nextAffection });
+
+  if (task.target_role_id) {
+    const expDelta = (task.difficulty === 'H' ? 30 : 20) + Math.max(0, task.reward_points || 0);
+    const affectionDelta = task.reward_points || 5;
+    try {
+      await addRoleProgress(task.target_role_id, { expDelta, affectionDelta });
+    } catch (error) {
+      console.warn('[DailyTheater] addRoleProgress failed', error);
+    }
+  }
   return { ...task, completed: 1, affection_points: nextAffection };
 }
