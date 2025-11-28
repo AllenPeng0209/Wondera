@@ -616,6 +616,19 @@ export default function ConversationScreen({ navigation, route }) {
             </View>
           </View>
           <TouchableOpacity
+            style={styles.callButton}
+            onPress={() => {
+              navigation.navigate('VoiceCall', {
+                characterId: role.id,
+                characterName: role.name,
+                characterAvatar: getRoleImage(role.id, 'avatar'),
+                characterPersona: role.persona,
+              });
+            }}
+          >
+            <Ionicons name="call-outline" size={18} color="#f093a4" />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.settingsButton}
             onPress={() =>
               navigation.navigate('RoleSettings', {
@@ -998,6 +1011,16 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.6,
+  },
+  callButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#f1d7de',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
   settingsButton: {
     width: 34,
