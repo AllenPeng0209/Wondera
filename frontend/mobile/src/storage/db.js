@@ -379,6 +379,7 @@ export async function getConversations() {
              SELECT
                CASE
                  WHEN m.kind = 'emoji' THEN '[表情]'
+                 WHEN m.kind = 'image' THEN '[图片]'
                  ELSE m.body
                END
              FROM messages m

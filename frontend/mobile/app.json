@@ -22,6 +22,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "用于拍照发送图片，让对话角色看得到你的现场。",
+        "NSPhotoLibraryUsageDescription": "用于选择并发送图片/截图，让对话角色看得到你发的内容。",
         "UIBackgroundModes": [
           "fetch"
         ]
@@ -36,6 +38,9 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -43,7 +48,8 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-image-picker"
     ],
     "extra": {
       "eas": {

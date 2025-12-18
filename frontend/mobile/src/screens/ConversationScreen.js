@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Audio } from 'expo-av';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addMessage,
@@ -57,6 +58,30 @@ function detectNegativeTone(text) {
   return hits;
 }
 
+function parseImageMediaKey(mediaKey) {
+  if (!mediaKey || typeof mediaKey !== 'string') return null;
+  const trimmed = mediaKey.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          uri: parsed.uri || null,
+          base64: parsed.base64 || null,
+          mimeType: parsed.mimeType || parsed.mime_type || null,
+          width: parsed.width || null,
+          height: parsed.height || null,
+          fileName: parsed.fileName || parsed.file_name || null,
+        };
+      }
+    } catch {
+      // ignore malformed
+    }
+  }
+  return { uri: trimmed };
+}
+
 export default function ConversationScreen({ navigation, route }) {
   const { conversationId, shouldResendGreeting } = route.params;
   const insets = useSafeAreaInsets();
@@ -64,6 +89,8 @@ export default function ConversationScreen({ navigation, route }) {
   const [conversation, setConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
+  const [pendingImage, setPendingImage] = useState(null);
+  const [imageViewer, setImageViewer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -305,21 +332,92 @@ export default function ConversationScreen({ navigation, route }) {
     [conversation, allowAutoEmoji]
   );
 
+  const handlePickImage = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('需要相册权限', '请允许访问相册后再发送图片。');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+        base64: true,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+      setPendingImage({
+        uri: asset.uri,
+        base64: asset.base64 || null,
+        mimeType: asset.mimeType || 'image/jpeg',
+        width: asset.width || null,
+        height: asset.height || null,
+        fileName: asset.fileName || null,
+      });
+    } catch (error) {
+      console.warn('[Conversation] pick image failed', error);
+      Alert.alert('选图失败', error?.message || '无法打开相册');
+    }
+  }, []);
+
+  const handleTakePhoto = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('需要相机权限', '请允许访问相机后再拍照发送。');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+        base64: true,
+      });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset?.uri) return;
+      setPendingImage({
+        uri: asset.uri,
+        base64: asset.base64 || null,
+        mimeType: asset.mimeType || 'image/jpeg',
+        width: asset.width || null,
+        height: asset.height || null,
+        fileName: asset.fileName || null,
+      });
+    } catch (error) {
+      console.warn('[Conversation] take photo failed', error);
+      Alert.alert('拍照失败', error?.message || '无法打开相机');
+    }
+  }, []);
+
   const handleSend = async () => {
-    if (!inputValue.trim() || !conversation || !role) return;
+    if ((!inputValue.trim() && !pendingImage) || !conversation || !role) return;
     if (isBlocked) {
       Alert.alert('已拉黑', '你已拉黑 Ta，无法继续对话。');
       return;
     }
     const content = inputValue.trim();
     setInputValue('');
+    const imageAttachment = pendingImage;
+    setPendingImage(null);
     const quotedBody = quoteSource || null;
     setQuotePreview(null);
     setQuoteSource(null);
     const createdAt = Date.now();
-    const newMessage = await addMessage(conversation.id, 'user', content, createdAt, {
-      quotedBody,
-    });
+    const newMessage = imageAttachment
+      ? await addMessage(conversation.id, 'user', content, createdAt, {
+          quotedBody,
+          kind: 'image',
+          mediaKey: JSON.stringify({
+            uri: imageAttachment.uri,
+            base64: imageAttachment.base64 || null,
+            mimeType: imageAttachment.mimeType || 'image/jpeg',
+            width: imageAttachment.width || null,
+            height: imageAttachment.height || null,
+            fileName: imageAttachment.fileName || null,
+          }),
+        })
+      : await addMessage(conversation.id, 'user', content, createdAt, {
+          quotedBody,
+        });
     const nextHistory = [...messagesRef.current, newMessage];
     setMessages(nextHistory);
     messagesRef.current = nextHistory;
@@ -546,9 +644,14 @@ const TypingBubble = () => {
   }, []);
 
   const handleCopyMessage = useCallback(async () => {
-    if (!selectedMessage || !selectedMessage.body) return;
+    if (!selectedMessage) return;
+    const content =
+      selectedMessage.kind === 'image'
+        ? selectedMessage.body || '[图片]'
+        : selectedMessage.body;
+    if (!content) return;
     try {
-      await Clipboard.setStringAsync(selectedMessage.body);
+      await Clipboard.setStringAsync(content);
     } catch (error) {
       console.warn('[Conversation] 复制失败', error);
     } finally {
@@ -557,9 +660,18 @@ const TypingBubble = () => {
   }, [selectedMessage, closeActionMenu]);
 
   const handleForwardMessage = useCallback(async () => {
-    if (!selectedMessage || !selectedMessage.body) return;
     try {
-      await Share.share({ message: selectedMessage.body });
+      if (!selectedMessage) return;
+      if (selectedMessage.kind === 'image') {
+        const media = parseImageMediaKey(selectedMessage.mediaKey);
+        const url = media?.uri || undefined;
+        const message = selectedMessage.body || '';
+        if (!url && !message) return;
+        await Share.share(url ? { url, message } : { message });
+      } else {
+        if (!selectedMessage.body) return;
+        await Share.share({ message: selectedMessage.body });
+      }
     } catch (error) {
       console.warn('[Conversation] 转发失败', error);
     } finally {
@@ -581,13 +693,18 @@ const TypingBubble = () => {
   }, [selectedMessage, closeActionMenu]);
 
   const handleQuoteMessage = useCallback(() => {
-    if (!selectedMessage || !selectedMessage.body) return;
-    const snippet =
-      selectedMessage.body.length > 40
-        ? `${selectedMessage.body.slice(0, 40)}…`
+    if (!selectedMessage) return;
+    const baseText =
+      selectedMessage.kind === 'image'
+        ? selectedMessage.body
+          ? `【图片】${selectedMessage.body}`
+          : '【图片】'
         : selectedMessage.body;
+    if (!baseText) return;
+    const snippet =
+      baseText.length > 40 ? `${baseText.slice(0, 40)}…` : baseText;
     setQuotePreview(snippet);
-    setQuoteSource(selectedMessage.body);
+    setQuoteSource(baseText);
     closeActionMenu();
   }, [selectedMessage, closeActionMenu]);
 
@@ -599,7 +716,62 @@ const TypingBubble = () => {
 
   const renderMessage = ({ item }) => {
     const isUser = item.sender === 'user';
+    const isImage = item.kind === 'image';
     const isEmoji = item.kind === 'emoji' && item.mediaKey;
+
+    if (isImage) {
+      const media = parseImageMediaKey(item.mediaKey);
+      const uri = media?.uri || null;
+      const captionText = (item.body || '').replace(/\r/g, '').trim();
+      const quotedText = (item.quotedBody || '').replace(/\r/g, '').replace(/\n+/g, ' ');
+      return (
+        <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
+          {!isUser && <Image source={getRoleImage(role?.id, 'avatar')} style={styles.messageAvatar} />}
+          {isUser && <View style={styles.messageAvatarPlaceholder} />}
+          <View style={styles.messageContent}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onLongPress={(event) => handleMessageLongPress(item, event)}
+              delayLongPress={300}
+              onPress={() => {
+                setSelectedWord('');
+                if (uri) setImageViewer({ uri, caption: captionText });
+              }}
+            >
+              <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI, styles.bubbleImage]}>
+                {quotedText ? (
+                  <View style={styles.messageQuoteBubble}>
+                    <Text style={styles.messageQuoteText}>{quotedText}</Text>
+                  </View>
+                ) : null}
+                {uri ? (
+                  <Image source={{ uri }} style={styles.imageMessage} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.imageMessage, styles.imageMessagePlaceholder]}>
+                    <Ionicons name="image-outline" size={24} color="#999" />
+                    <Text style={styles.imagePlaceholderText}>图片</Text>
+                  </View>
+                )}
+                {captionText ? (
+                  <Text
+                    style={
+                      isUser
+                        ? [styles.bubbleText, styles.bubbleTextUser, styles.imageCaption]
+                        : [styles.bubbleText, styles.imageCaption]
+                    }
+                  >
+                    {captionText}
+                  </Text>
+                ) : null}
+                {isUser ? (
+                  <Ionicons name="heart" color="#f093a4" size={16} style={styles.bubbleHeart} />
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
 
     if (isEmoji) {
       const emojiSource = getEmojiSourceByKey(item.mediaKey);
@@ -728,6 +900,7 @@ const TypingBubble = () => {
   const listData = isTyping ? [...messages, { type: 'typing', id: 'typing-indicator' }] : messages;
 
   const bottomPadding = Math.max(insets.bottom, 12);
+  const canSend = !!(inputValue.trim() || pendingImage) && !sending;
   return (
     <ImageBackground source={backgroundImage} style={styles.backgroundImage} imageStyle={styles.backgroundImageStyle}>
       <SafeAreaView style={[styles.container, { paddingTop: topPadding, paddingBottom: bottomPadding }]}>
@@ -793,7 +966,34 @@ const TypingBubble = () => {
             removeClippedSubviews={false}
           />
 
+          {pendingImage ? (
+            <View style={styles.attachmentPreviewRow}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => setImageViewer({ uri: pendingImage.uri, caption: inputValue.trim() })}
+              >
+                <Image source={{ uri: pendingImage.uri }} style={styles.attachmentPreviewImage} />
+              </TouchableOpacity>
+              <Text style={styles.attachmentPreviewText}>已选图片</Text>
+              <TouchableOpacity
+                style={styles.attachmentRemoveButton}
+                onPress={() => setPendingImage(null)}
+                accessibilityLabel="移除图片"
+              >
+                <Ionicons name="close-circle" size={22} color="#f093a4" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           <View style={styles.inputRow}>
+            <TouchableOpacity
+              style={styles.inputIcon}
+              onPress={handlePickImage}
+              onLongPress={handleTakePhoto}
+              delayLongPress={250}
+            >
+              <Ionicons name="image-outline" size={22} color="#b0b0b0" />
+            </TouchableOpacity>
             <TouchableOpacity style={styles.inputIcon}>
               <Ionicons name="happy-outline" size={22} color="#b0b0b0" />
             </TouchableOpacity>
@@ -806,9 +1006,9 @@ const TypingBubble = () => {
               multiline
             />
             <TouchableOpacity
-              style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+              style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
               onPress={handleSend}
-              disabled={sending}
+              disabled={!canSend}
             >
               <Ionicons name="paper-plane-outline" size={20} color="#fff" />
             </TouchableOpacity>
@@ -948,6 +1148,26 @@ const TypingBubble = () => {
             </View>
           </View>
         )}
+
+        <Modal
+          visible={!!imageViewer}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setImageViewer(null)}
+        >
+          <TouchableOpacity
+            style={styles.imageViewerOverlay}
+            activeOpacity={1}
+            onPress={() => setImageViewer(null)}
+          >
+            {imageViewer?.uri ? (
+              <Image source={{ uri: imageViewer.uri }} style={styles.imageViewerImage} resizeMode="contain" />
+            ) : null}
+            {imageViewer?.caption ? (
+              <Text style={styles.imageViewerCaption}>{imageViewer.caption}</Text>
+            ) : null}
+          </TouchableOpacity>
+        </Modal>
 
         <Modal visible={progressVisible} transparent animationType="fade" onRequestClose={() => setProgressVisible(false)}>
           <TouchableOpacity style={styles.progressOverlay} activeOpacity={1} onPress={() => setProgressVisible(false)}>
@@ -1178,10 +1398,32 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 6,
   },
+  bubbleImage: {
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
   emojiImage: {
     width: 160,
     height: 160,
     borderRadius: 14,
+  },
+  imageMessage: {
+    width: 220,
+    height: 260,
+    borderRadius: 14,
+    backgroundColor: '#f4f4f4',
+  },
+  imageMessagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePlaceholderText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#888',
+  },
+  imageCaption: {
+    marginTop: 8,
   },
   bubbleText: {
     fontSize: 15,
@@ -1237,6 +1479,33 @@ const styles = StyleSheet.create({
     marginTop: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.92)',
   },
+  attachmentPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderWidth: 1,
+    borderColor: '#f4f4f4',
+    marginTop: 8,
+  },
+  attachmentPreviewImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#f4f4f4',
+  },
+  attachmentPreviewText: {
+    marginLeft: 10,
+    flex: 1,
+    color: '#6b5f67',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  attachmentRemoveButton: {
+    padding: 6,
+  },
   inputIcon: {
     padding: 6,
   },
@@ -1260,6 +1529,27 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.6,
+  },
+  imageViewerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.88)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  imageViewerImage: {
+    width: '100%',
+    height: '78%',
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  imageViewerCaption: {
+    marginTop: 12,
+    color: '#fff',
+    fontSize: 14,
+    textAlign: 'center',
+    opacity: 0.9,
   },
   settingsButton: {
     width: 34,
