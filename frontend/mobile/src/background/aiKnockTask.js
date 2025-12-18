@@ -6,11 +6,14 @@ import {
   getConversationDetail,
   getMessages,
   addMessage,
+  getRoleSettings,
+  getRoleProgress,
   getAiKnockCountSince,
   recordAiKnockSend,
   getUserSettings,
 } from '../storage/db';
 import { generateAiReply } from '../services/ai';
+import { pickEmojiKeyForText } from '../services/emoji';
 import { sendLocalKnockNotification } from '../services/notifications';
 
 export const AI_KNOCK_TASK = 'dreamate-ai-knock-background-task';
@@ -75,12 +78,14 @@ export async function runAiKnockOnce(sinceMs = 6 * 60 * 60 * 1000) {
   const { conversation, role } = detail;
   const history = await getMessages(conversation.id);
   const userProfile = await getUserSettings();
+  const roleProgress = role?.id ? await getRoleProgress(role.id) : null;
 
   const aiResult = await generateAiReply({
     conversation,
     role,
     history,
     userProfile,
+    affectionLevel: roleProgress?.affection_level || 1,
   });
 
   const normalized = (aiResult?.text || '').replace(/\r/g, '').trim();
@@ -95,6 +100,21 @@ export async function runAiKnockOnce(sinceMs = 6 * 60 * 60 * 1000) {
   const baseTime = Date.now();
   for (let i = 0; i < chunks.length; i++) {
     await addMessage(conversation.id, 'ai', chunks[i], baseTime + i);
+  }
+
+  try {
+    const roleSettings = role?.id ? await getRoleSettings(role.id) : null;
+    if (roleSettings && Number(roleSettings.allow_emoji)) {
+      const emojiKey = pickEmojiKeyForText(aiResult.text);
+      if (emojiKey) {
+        await addMessage(conversation.id, 'ai', '[表情]', baseTime + chunks.length + 1, {
+          kind: 'emoji',
+          mediaKey: emojiKey,
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('[AI Knock] pick emoji failed', error);
   }
 
   await recordAiKnockSend(conversation.id, baseTime);

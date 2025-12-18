@@ -1,5 +1,6 @@
 import { advanceScriptCursor } from '../storage/db';
 import { sendBailianMessage } from './bailian';
+import { getRelationshipStageByAffectionLevel } from './relationship';
 
 async function callQwen(messages, systemPrompt) {
   try {
@@ -19,16 +20,20 @@ async function callQwen(messages, systemPrompt) {
   }
 }
 
-function prepareSystemPrompt(role, userProfile) {
+function prepareSystemPrompt(role, userProfile, affectionLevel) {
+  const relationshipStage = getRelationshipStageByAffectionLevel(affectionLevel);
+  const relationshipContext = relationshipStage
+    ? `关系状态：${relationshipStage.label}。亲密度要求：${relationshipStage.promptHint}。`
+    : '';
   const userParts = [];
   if (userProfile?.nickname) userParts.push(`对方昵称：${userProfile.nickname}`);
   if (userProfile?.mbti) userParts.push(`MBTI：${userProfile.mbti}`);
   if (userProfile?.zodiac) userParts.push(`星座：${userProfile.zodiac}`);
   if (userProfile?.birthday) userParts.push(`生日：${userProfile.birthday}`);
   const userContext = userParts.length
-    ? `用户画像：${userParts.join('，')}。对话时自然地体现和呼应这些特点，保持亲密感，但不要反复背诵或显得刻意。`
+    ? `用户画像：${userParts.join('，')}。对话时自然地体现和呼应这些特点，根据关系状态调整亲密度，但不要反复背诵或显得刻意。`
     : '';
-  return `请严格扮演“${role.name}”，具备以下设定：${role.persona}。${userContext}回复要求：只用口语化第一人称对话，不写旁白、动作或场景描写；不要使用括号/星号等舞台指令；保持简短，单条回复尽量控制在30-60个汉字。`;
+  return `请严格扮演“${role.name}”，具备以下设定：${role.persona}。${relationshipContext}${userContext}回复要求：只用口语化第一人称对话，不写旁白、动作或场景描写；不要使用括号/星号等舞台指令；保持简短，单条回复尽量控制在30-60个汉字。`;
 }
 
 function buildMessagePayload(history) {
@@ -54,9 +59,9 @@ async function fallbackFromScript(conversation, role) {
   return { text: line, fallback: true, nextCursor };
 }
 
-export async function generateAiReply({ conversation, role, history, userProfile }) {
+export async function generateAiReply({ conversation, role, history, userProfile, affectionLevel }) {
   try {
-    const text = await callQwen(buildMessagePayload(history), prepareSystemPrompt(role, userProfile));
+    const text = await callQwen(buildMessagePayload(history), prepareSystemPrompt(role, userProfile, affectionLevel));
     if (!text) {
       return fallbackFromScript(conversation, role);
     }

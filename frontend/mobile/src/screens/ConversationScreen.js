@@ -39,8 +39,11 @@ import {
   DAILY_VOCAB_TARGET,
 } from '../storage/db';
 import { generateAiReply, getWordCard } from '../services/ai';
+import { pickEmojiKeyForText } from '../services/emoji';
 import { synthesizeQwenTts } from '../services/tts';
 import { getRoleImage } from '../data/images';
+import { getEmojiSourceByKey } from '../data/emojiAssets';
+import { getRelationshipLabelByAffectionLevel } from '../services/relationship';
 
 const NEGATIVE_CUES = ['讨厌', '滚', '闭嘴', '生气', '气死', '别烦', '不理你', 'hate you', 'stupid', 'idiot', 'angry', 'annoying', 'shut up', 'fuck'];
 
@@ -168,6 +171,18 @@ export default function ConversationScreen({ navigation, route }) {
   }, [role]);
 
   useEffect(() => {
+    (async () => {
+      if (!role?.id) return;
+      try {
+        const progress = await getRoleProgress(role.id);
+        if (progress) setRoleProgress(progress);
+      } catch (error) {
+        console.warn('[Conversation] load role progress failed', error);
+      }
+    })();
+  }, [role?.id]);
+
+  useEffect(() => {
     // 只在 isTyping 从 false 变为 true 时滚动（显示打字指示器）
     const shouldScroll = isTyping && !prevIsTypingRef.current;
 
@@ -198,7 +213,10 @@ export default function ConversationScreen({ navigation, route }) {
       navigation.setParams({ shouldResendGreeting: false });
       // 延迟一下再发送，确保页面已经加载完成
       setTimeout(() => {
-        deliverAiChunks(role.greeting);
+        (async () => {
+          await deliverAiChunks(role.greeting);
+          await maybeSendAutoEmoji(role.greeting);
+        })();
       }, 300);
     }
 
@@ -267,6 +285,25 @@ export default function ConversationScreen({ navigation, route }) {
   );
 
   const isBlocked = !!(roleConfig && Number(roleConfig.is_blocked));
+  const allowAutoEmoji = !!(roleConfig && Number(roleConfig.allow_emoji));
+
+  const maybeSendAutoEmoji = useCallback(
+    async (text) => {
+      if (!conversation) return;
+      if (!allowAutoEmoji) return;
+      const emojiKey = pickEmojiKeyForText(text);
+      if (!emojiKey) return;
+
+      const msg = await addMessage(conversation.id, 'ai', '[表情]', Date.now(), {
+        kind: 'emoji',
+        mediaKey: emojiKey,
+      });
+      const updatedHistory = [...messagesRef.current, msg];
+      setMessages(updatedHistory);
+      messagesRef.current = updatedHistory;
+    },
+    [conversation, allowAutoEmoji]
+  );
 
   const handleSend = async () => {
     if (!inputValue.trim() || !conversation || !role) return;
@@ -299,6 +336,7 @@ export default function ConversationScreen({ navigation, route }) {
       })
       .catch((error) => console.warn('[Conversation] bumpDailyProgress failed', error));
 
+    let nextAffectionLevel = roleProgress?.affection_level || 1;
     if (role?.id) {
       const expDelta = Math.min(18, 8 + Math.floor(content.length / 30));
       const negativeHits = detectNegativeTone(content);
@@ -308,7 +346,10 @@ export default function ConversationScreen({ navigation, route }) {
         : Math.min(4, Math.max(1, Math.floor(content.length / 40)));
       try {
         const progress = await addRoleProgress(role.id, { expDelta, affectionDelta });
-        if (progress) setRoleProgress(progress);
+        if (progress) {
+          setRoleProgress(progress);
+          nextAffectionLevel = progress.affection_level || nextAffectionLevel;
+        }
       } catch (error) {
         console.warn('[Conversation] addRoleProgress failed', error);
       }
@@ -321,8 +362,10 @@ export default function ConversationScreen({ navigation, route }) {
         role,
         history: nextHistory,
         userProfile,
+        affectionLevel: nextAffectionLevel,
       });
       await deliverAiChunks(aiResult.text);
+      await maybeSendAutoEmoji(aiResult.text);
       if (typeof aiResult.nextCursor === 'number') {
         setConversation((prev) =>
           prev ? { ...prev, scriptCursor: aiResult.nextCursor } : prev
@@ -392,6 +435,7 @@ const TypingBubble = () => {
   const handlePlayTts = useCallback(
     async (message) => {
       if (!message || !message.body) return;
+      if (message.kind === 'emoji') return;
 
       try {
         // 如果正在播放同一条消息，则停止播放
@@ -555,6 +599,36 @@ const TypingBubble = () => {
 
   const renderMessage = ({ item }) => {
     const isUser = item.sender === 'user';
+    const isEmoji = item.kind === 'emoji' && item.mediaKey;
+
+    if (isEmoji) {
+      const emojiSource = getEmojiSourceByKey(item.mediaKey);
+      return (
+        <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
+          {!isUser && <Image source={getRoleImage(role?.id, 'avatar')} style={styles.messageAvatar} />}
+          {isUser && <View style={styles.messageAvatarPlaceholder} />}
+          <View style={styles.messageContent}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onLongPress={(event) => handleMessageLongPress(item, event)}
+              delayLongPress={300}
+              onPress={() => setSelectedWord('')}
+            >
+              <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI, styles.bubbleEmoji]}>
+                {emojiSource ? (
+                  <Image source={emojiSource} style={styles.emojiImage} resizeMode="contain" />
+                ) : (
+                  <Text style={isUser ? [styles.bubbleText, styles.bubbleTextUser] : styles.bubbleText}>
+                    {item.body || '[表情]'}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
     const bodyText = (item.body || '').replace(/\r/g, '').replace(/\n+/g, ' ');
     const quotedText = (item.quotedBody || '').replace(/\r/g, '').replace(/\n+/g, ' ');
 
@@ -665,9 +739,17 @@ const TypingBubble = () => {
             <Image source={getRoleImage(role.id, 'avatar')} style={styles.headerAvatar} />
             <View style={styles.headerInfo}>
               <Text style={styles.headerName}>{role.name || ''}</Text>
-              <View style={styles.moodPill}>
-                <Ionicons name="leaf-outline" color="#f093a4" size={12} />
-                <Text style={styles.moodText}>{role.mood || '想你'}</Text>
+              <View style={styles.statusRow}>
+                <View style={styles.moodPill}>
+                  <Ionicons name="leaf-outline" color="#f093a4" size={12} />
+                  <Text style={styles.moodText}>{role.mood || '想你'}</Text>
+                </View>
+                <View style={styles.relationshipPill}>
+                  <Ionicons name="heart-outline" color="#f093a4" size={12} />
+                  <Text style={styles.relationshipText}>
+                    {getRelationshipLabelByAffectionLevel(roleProgress?.affection_level || 1)}
+                  </Text>
+                </View>
               </View>
             </View>
           </TouchableOpacity>
@@ -874,7 +956,9 @@ const TypingBubble = () => {
                 <Image source={getRoleImage(role.id, 'avatar')} style={styles.progressAvatar} />
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.progressTitle}>{role.name || '角色'}</Text>
-                  <Text style={styles.progressSubtitle}>{role.mood || '想你'}</Text>
+                  <Text style={styles.progressSubtitle}>
+                    {`${role.mood || '想你'} · ${getRelationshipLabelByAffectionLevel(roleProgress?.affection_level || 1)}`}
+                  </Text>
                 </View>
                 <TouchableOpacity onPress={() => setProgressVisible(false)}>
                   <Ionicons name="close" size={18} color="#999" />
@@ -882,7 +966,9 @@ const TypingBubble = () => {
               </View>
 
               <View style={styles.progressBlock}>
-                <Text style={styles.progressLabel}>亲密等级 Lv.{roleProgress?.affection_level || 1}</Text>
+                <Text style={styles.progressLabel}>
+                  {`关系状态 ${getRelationshipLabelByAffectionLevel(roleProgress?.affection_level || 1)} · Lv.${roleProgress?.affection_level || 1}`}
+                </Text>
                 <View style={styles.progressBarBg}>
                   <View
                     style={[
@@ -991,6 +1077,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
   moodPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -999,9 +1091,23 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     backgroundColor: '#ffeaf0',
-    marginTop: 4,
+    marginRight: 8,
   },
   moodText: {
+    marginLeft: 4,
+    fontSize: 12,
+    color: '#f093a4',
+  },
+  relationshipPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#ffeaf0',
+  },
+  relationshipText: {
     marginLeft: 4,
     fontSize: 12,
     color: '#f093a4',
@@ -1067,6 +1173,15 @@ const styles = StyleSheet.create({
   bubbleUser: {
     backgroundColor: 'rgba(255, 234, 240, 0.9)',
     borderBottomRightRadius: 4,
+  },
+  bubbleEmoji: {
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
+  emojiImage: {
+    width: 160,
+    height: 160,
+    borderRadius: 14,
   },
   bubbleText: {
     fontSize: 15,

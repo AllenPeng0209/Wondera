@@ -93,6 +93,8 @@ export async function initDatabase() {
       conversation_id TEXT,
       sender TEXT,
       body TEXT,
+      kind TEXT DEFAULT 'text',
+      media_key TEXT,
       created_at INTEGER,
       audio_url TEXT,
       audio_mime TEXT,
@@ -100,6 +102,8 @@ export async function initDatabase() {
       quoted_body TEXT,
       FOREIGN KEY(conversation_id) REFERENCES conversations(id)
     );`);
+  await ensureColumn('messages', 'kind', "TEXT DEFAULT 'text'");
+  await ensureColumn('messages', 'media_key', 'TEXT');
   await ensureColumn('messages', 'audio_url', 'TEXT');
   await ensureColumn('messages', 'audio_mime', 'TEXT');
   await ensureColumn('messages', 'audio_duration', 'REAL');
@@ -372,7 +376,12 @@ export async function getConversations() {
     SELECT c.id, c.role_id as roleId, r.name, r.avatar, r.mood, r.greeting,
            c.updated_at as updatedAt,
            (
-             SELECT body FROM messages m
+             SELECT
+               CASE
+                 WHEN m.kind = 'emoji' THEN '[表情]'
+                 ELSE m.body
+               END
+             FROM messages m
              WHERE m.conversation_id = c.id
              ORDER BY created_at DESC
              LIMIT 1
@@ -462,17 +471,17 @@ export async function getConversationDetail(conversationId) {
 
 export async function getMessages(conversationId) {
   const rows = await getAll(
-    'SELECT id, sender, body, created_at as createdAt, audio_url as audioUrl, audio_mime as audioMime, audio_duration as audioDuration, quoted_body as quotedBody FROM messages WHERE conversation_id = ? ORDER BY created_at ASC;',
+    "SELECT id, sender, body, kind, media_key as mediaKey, created_at as createdAt, audio_url as audioUrl, audio_mime as audioMime, audio_duration as audioDuration, quoted_body as quotedBody FROM messages WHERE conversation_id = ? ORDER BY created_at ASC;",
     [conversationId]
   );
   return rows;
 }
 
 export async function addMessage(conversationId, sender, body, createdAt = now(), options = {}) {
-  const { quotedBody = null } = options || {};
+  const { quotedBody = null, kind = 'text', mediaKey = null } = options || {};
   const insertResult = await run(
-    'INSERT INTO messages (conversation_id, sender, body, created_at, quoted_body) VALUES (?, ?, ?, ?, ?);',
-    [conversationId, sender, body, createdAt, quotedBody]
+    'INSERT INTO messages (conversation_id, sender, body, kind, media_key, created_at, quoted_body) VALUES (?, ?, ?, ?, ?, ?, ?);',
+    [conversationId, sender, body, kind, mediaKey, createdAt, quotedBody]
   );
   await run('UPDATE conversations SET updated_at = ? WHERE id = ?;', [createdAt, conversationId]);
 
@@ -481,6 +490,8 @@ export async function addMessage(conversationId, sender, body, createdAt = now()
     id: insertedId ?? `${conversationId}-${createdAt}-${sender}`,
     sender,
     body,
+    kind,
+    mediaKey,
     createdAt,
     audioUrl: null,
     audioMime: null,
