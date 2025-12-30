@@ -100,13 +100,6 @@ export default function ChatListScreen({ navigation }) {
     <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}> 
       <View style={styles.header}>
         <Text style={styles.headerTitle}>消息</Text>
-        <TouchableOpacity
-          style={styles.headerButton}
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('CreateRole')}
-        >
-          <Feather name="plus" size={20} color="#8f8f8f" />
-        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -147,15 +140,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '600',
     color: '#404040',
-  },
-  headerButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#ececec',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   listContent: {
     paddingBottom: 120,

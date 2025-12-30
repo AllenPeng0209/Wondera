@@ -34,7 +34,7 @@ const ratingButtons = [
   { key: 'easy', label: '简单', color: '#6fcf97' },
 ];
 
-export default function VocabScreen() {
+export default function VocabScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [cards, setCards] = useState([]);
@@ -253,6 +253,9 @@ export default function VocabScreen() {
   return (
     <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={20} color="#333" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>词汇练习</Text>
         <TouchableOpacity style={styles.refreshButton} onPress={loadData}>
           <Ionicons name="refresh" size={18} color="#f093a4" />
@@ -569,13 +572,23 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#333',
+    flex: 1,
+    textAlign: 'center',
+  },
+  backButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#f4d9e0',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   refreshButton: {
     width: 32,

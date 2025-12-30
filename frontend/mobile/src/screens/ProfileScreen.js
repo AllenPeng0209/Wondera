@@ -17,8 +17,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getUserSettings, updateUserSettings } from '../storage/db';
 
 const quickLinks = [
+  { id: 'vocab', label: '词库', icon: 'book-outline', route: 'Vocab' },
   { id: 'wallet', label: '心动币钱包', icon: 'wallet-outline', route: 'Wallet' },
-  { id: 'api', label: 'API 设置', icon: 'code-outline', route: 'ApiSettings' },
   { id: 'bias', label: '聊天偏好设置', icon: 'options-outline', route: 'PreferenceSettings' },
   { id: 'backup', label: '聊天记录备份', icon: 'cloud-upload-outline', route: null },
   { id: 'feedback', label: '功能许愿和反馈', icon: 'chatbubble-ellipses-outline', route: null },
