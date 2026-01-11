@@ -82,10 +82,10 @@ export default function ChatListScreen({ navigation }) {
     <TouchableOpacity
       activeOpacity={0.9}
       style={styles.discoverCard}
-      onPress={() => navigation.navigate('Discover')}
+      onPress={() => navigation.navigate('Explore')}
     >
       <View style={styles.discoverTextBlock}>
-        <Text style={styles.discoverLabel}>发现 · 心动推荐</Text>
+        <Text style={styles.discoverLabel}>探索 · 心动推荐</Text>
         <Text style={styles.discoverTitle}>去看看新角色</Text>
         <Text style={styles.discoverSubtitle}>Tap to explore</Text>
       </View>
@@ -99,7 +99,7 @@ export default function ChatListScreen({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { paddingTop: topPadding }]}> 
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>消息</Text>
+        <Text style={styles.headerTitle}>恋人</Text>
       </View>
 
       <FlatList

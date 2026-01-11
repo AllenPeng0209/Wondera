@@ -10,6 +10,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ChatListScreen from './src/screens/ChatListScreen';
 import ConversationScreen from './src/screens/ConversationScreen';
 import DiscoverScreen from './src/screens/DiscoverScreen';
+import ExplorePostScreen from './src/screens/ExplorePostScreen';
+import WorldExploreScreen from './src/screens/WorldExploreScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import RoleSettingsScreen from './src/screens/RoleSettingsScreen';
 import WalletScreen from './src/screens/WalletScreen';
@@ -20,7 +22,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import LoginEmailScreen from './src/screens/LoginEmailScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 
-import DailyTheaterScreen from './src/screens/DailyTheaterScreen';
+import GrowthScreen from './src/screens/GrowthScreen';
 import { initDatabase, getUserSettings } from './src/storage/db';
 import { requestNotificationPermissions } from './src/services/notifications';
 import { registerAiKnockBackgroundTask, runAiKnockOnce } from './src/background/aiKnockTask';
@@ -52,8 +54,9 @@ function MainTabs() {
         },
         tabBarIcon: ({ color, size }) => {
           const iconMap = {
-            Messages: 'chatbubble-ellipses-outline',
-            Theater: 'film-outline',
+            Lovers: 'chatbubble-ellipses-outline',
+            Explore: 'compass-outline',
+            Growth: 'sparkles-outline',
             Profile: 'person-circle-outline',
           };
           return <Ionicons name={iconMap[route.name]} color={color} size={size} />;
@@ -64,9 +67,10 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Messages" component={ChatListScreen} options={{ title: '消息' }} />
-      <Tab.Screen name="Theater" component={DailyTheaterScreen} options={{ title: '剧场' }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: '我的' }} />
+      <Tab.Screen name="Lovers" component={ChatListScreen} options={{ title: '恋人' }} />
+      <Tab.Screen name="Explore" component={DiscoverScreen} options={{ title: '探索' }} />
+      <Tab.Screen name="Growth" component={GrowthScreen} options={{ title: '成长' }} />
+      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: '个人' }} />
     </Tab.Navigator>
   );
 }
@@ -128,6 +132,8 @@ export default function App() {
             <Stack.Screen name="Onboarding" component={OnboardingScreen} />
             <Stack.Screen name="Home" component={MainTabs} />
           <Stack.Screen name="Discover" component={DiscoverScreen} />
+          <Stack.Screen name="ExplorePost" component={ExplorePostScreen} />
+          <Stack.Screen name="WorldExplore" component={WorldExploreScreen} />
           <Stack.Screen name="Conversation" component={ConversationScreen} />
           <Stack.Screen name="RoleSettings" component={RoleSettingsScreen} />
           <Stack.Screen name="Wallet" component={WalletScreen} />
