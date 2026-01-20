@@ -12,11 +12,13 @@ import ConversationScreen from './src/screens/ConversationScreen';
 import DiscoverScreen from './src/screens/DiscoverScreen';
 import ExplorePostScreen from './src/screens/ExplorePostScreen';
 import WorldExploreScreen from './src/screens/WorldExploreScreen';
+import MallSpaceScreen from './src/screens/MallSpaceScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import RoleSettingsScreen from './src/screens/RoleSettingsScreen';
 import WalletScreen from './src/screens/WalletScreen';
 import PreferenceSettingsScreen from './src/screens/PreferenceSettingsScreen';
-import VocabScreen from './src/screens/VocabScreen';
+import DailyTasksScreen from './src/screens/DailyTasksScreen';
+import AchievementScreen from './src/screens/AchievementScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import LoginEmailScreen from './src/screens/LoginEmailScreen';
@@ -134,11 +136,13 @@ export default function App() {
           <Stack.Screen name="Discover" component={DiscoverScreen} />
           <Stack.Screen name="ExplorePost" component={ExplorePostScreen} />
           <Stack.Screen name="WorldExplore" component={WorldExploreScreen} />
+          <Stack.Screen name="MallSpace" component={MallSpaceScreen} />
           <Stack.Screen name="Conversation" component={ConversationScreen} />
           <Stack.Screen name="RoleSettings" component={RoleSettingsScreen} />
           <Stack.Screen name="Wallet" component={WalletScreen} />
           <Stack.Screen name="PreferenceSettings" component={PreferenceSettingsScreen} />
-          <Stack.Screen name="Vocab" component={VocabScreen} />
+          <Stack.Screen name="DailyTasks" component={DailyTasksScreen} />
+          <Stack.Screen name="Achievement" component={AchievementScreen} />
         </Stack.Navigator>
       </NavigationContainer>
       </SafeAreaProvider>

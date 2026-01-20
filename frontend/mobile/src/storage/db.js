@@ -10,6 +10,12 @@ const MAX_EASE = 2.8;
 const BASE_ROLE_LEVEL_EXP = 50;
 const ROLE_AFFECTION_THRESHOLDS = [0, 60, 150, 320, 520, 800];
 const DAILY_VOCAB_TARGET = 10;
+const TASK_COIN_MULTIPLIER = 10;
+
+function getTaskCoinReward(rewardPoints = 0) {
+  const safePoints = Number.isFinite(rewardPoints) ? rewardPoints : 0;
+  return Math.max(0, Math.round(safePoints * TASK_COIN_MULTIPLIER));
+}
 
 function getDayKey(ts = Date.now()) {
   const d = new Date(ts);
@@ -166,6 +172,7 @@ export async function initDatabase() {
       memory_enabled INTEGER DEFAULT 1,
       currency_balance INTEGER DEFAULT 520,
       wallet_recharge_history TEXT,
+      wallet_earn_history TEXT,
       api_provider TEXT,
       api_key TEXT,
       api_model TEXT,
@@ -177,6 +184,7 @@ export async function initDatabase() {
       affection_points INTEGER DEFAULT 0
     );`);
   await ensureColumn('user_settings', 'wallet_recharge_history', 'TEXT');
+  await ensureColumn('user_settings', 'wallet_earn_history', 'TEXT');
   await ensureColumn('user_settings', 'api_provider', 'TEXT');
   await ensureColumn('user_settings', 'api_key', 'TEXT');
   await ensureColumn('user_settings', 'api_model', 'TEXT');
@@ -251,6 +259,7 @@ export async function initDatabase() {
       difficulty TEXT,
       target_words TEXT,
       reward_points INTEGER DEFAULT 5,
+      reward_coins INTEGER DEFAULT 0,
       completed INTEGER DEFAULT 0,
       day_key TEXT,
       created_at INTEGER,
@@ -261,6 +270,7 @@ export async function initDatabase() {
   await ensureColumn('daily_theater_tasks', 'kickoff_prompt', 'TEXT');
   await ensureColumn('daily_theater_tasks', 'difficulty', 'TEXT');
   await ensureColumn('daily_theater_tasks', 'target_words', 'TEXT');
+  await ensureColumn('daily_theater_tasks', 'reward_coins', 'INTEGER DEFAULT 0');
 
   await run(`CREATE TABLE IF NOT EXISTS daily_learning_stats (
       day_key TEXT PRIMARY KEY,
@@ -292,6 +302,7 @@ async function seedInitialData() {
     );
     await updateUserSettings({
       wallet_recharge_history: JSON.stringify([]),
+      wallet_earn_history: JSON.stringify([]),
       api_provider: 'Dreamate Cloud',
       api_mode: 'wallet',
       bubble_style: 'default',
@@ -1202,6 +1213,7 @@ function pickDailyTasks(dayKey, count = 3) {
     difficulty: item.difficulty || 'M',
     target_words: JSON.stringify(item.targetWords || []),
     reward_points: item.reward || 5,
+    reward_coins: getTaskCoinReward(item.reward || 5),
     completed: 0,
     day_key: dayKey,
     created_at: now(),
@@ -1211,11 +1223,13 @@ function pickDailyTasks(dayKey, count = 3) {
 
 export async function ensureDailyTasksForDay(dayKey) {
   const existing = await getAll('SELECT * FROM daily_theater_tasks WHERE day_key = ?;', [dayKey]);
+  const needsRewardCoins =
+    existing && existing.length >= 1 && existing.some((task) => task.reward_coins === null || task.reward_coins === undefined);
   const isValid =
     existing &&
     existing.length >= 3 &&
     existing.every((t) => t.target_role_id && t.kickoff_prompt && t.target_words);
-  if (existing && existing.length >= 1 && !isValid) {
+  if (existing && existing.length >= 1 && (!isValid || needsRewardCoins)) {
     // 尝试为缺少角色/开场白/难度/目标词的旧任务回填
     for (const task of existing) {
       const poolMeta = THEATER_POOL.find((p) => p.title === task.title);
@@ -1223,15 +1237,21 @@ export async function ensureDailyTasksForDay(dayKey) {
       const fallbackKickoff = poolMeta?.kickoff || 'Hey, ready to start this task?';
       const fallbackDifficulty = poolMeta?.difficulty || 'M';
       const fallbackWords = JSON.stringify(poolMeta?.targetWords || []);
+      const rewardPoints = task.reward_points || poolMeta?.reward || 5;
+      const rewardCoins =
+        task.reward_coins === null || task.reward_coins === undefined
+          ? getTaskCoinReward(rewardPoints)
+          : task.reward_coins;
 
-      if (task.target_role_id && task.kickoff_prompt && task.target_words) continue;
+      if (task.target_role_id && task.kickoff_prompt && task.target_words && !needsRewardCoins) continue;
       await run(
-        'UPDATE daily_theater_tasks SET target_role_id = ?, kickoff_prompt = ?, difficulty = ?, target_words = ? WHERE id = ?;',
+        'UPDATE daily_theater_tasks SET target_role_id = ?, kickoff_prompt = ?, difficulty = ?, target_words = ?, reward_coins = ? WHERE id = ?;',
         [
           task.target_role_id || fallbackRole,
           task.kickoff_prompt || fallbackKickoff,
           task.difficulty || fallbackDifficulty,
           task.target_words || fallbackWords,
+          rewardCoins,
           task.id,
         ]
       );
@@ -1248,8 +1268,8 @@ export async function ensureDailyTasksForDay(dayKey) {
   for (const task of tasks) {
     await run(
       `INSERT OR REPLACE INTO daily_theater_tasks (
-        id, title, description, scene, target_role_id, kickoff_prompt, difficulty, target_words, reward_points, completed, day_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        id, title, description, scene, target_role_id, kickoff_prompt, difficulty, target_words, reward_points, reward_coins, completed, day_key, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         task.id,
         task.title,
@@ -1260,6 +1280,7 @@ export async function ensureDailyTasksForDay(dayKey) {
         task.difficulty,
         task.target_words,
         task.reward_points,
+        task.reward_coins,
         task.completed,
         task.day_key,
         task.created_at,
@@ -1274,6 +1295,12 @@ export async function getDailyTasks(dayKey) {
   const rows = await getAll('SELECT * FROM daily_theater_tasks WHERE day_key = ? ORDER BY created_at ASC;', [dayKey]);
   return rows.map((row) => ({
     ...row,
+    reward_points: row.reward_points || 5,
+    reward_coins: (() => {
+      const rewardCoinsValue = Number(row.reward_coins);
+      if (Number.isFinite(rewardCoinsValue) && rewardCoinsValue > 0) return rewardCoinsValue;
+      return getTaskCoinReward(row.reward_points || 5);
+    })(),
     target_words: row.target_words ? JSON.parse(row.target_words) : [],
     difficulty: row.difficulty || 'M',
   }));
@@ -1287,17 +1314,46 @@ export async function completeDailyTask(taskId) {
 
   await run('UPDATE daily_theater_tasks SET completed = 1, updated_at = ? WHERE id = ?;', [now(), taskId]);
   const current = await getUserSettings();
-  const nextAffection = (current?.affection_points || 0) + (task.reward_points || 5);
-  await updateUserSettings({ affection_points: nextAffection });
+  const rewardPoints = task.reward_points || 5;
+  const rewardCoinsValue = Number(task.reward_coins);
+  const rewardCoins = Number.isFinite(rewardCoinsValue) && rewardCoinsValue > 0
+    ? rewardCoinsValue
+    : getTaskCoinReward(rewardPoints);
+  const nextAffection = (current?.affection_points || 0) + rewardPoints;
+  const nextBalance = (current?.currency_balance || 0) + rewardCoins;
+  const earnHistory = (() => {
+    if (!current?.wallet_earn_history) return [];
+    try {
+      const parsed = JSON.parse(current.wallet_earn_history);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  })();
+  const entry = {
+    id: `earn-task-${task.id}`,
+    type: 'daily_task',
+    title: '完成每日任务',
+    detail: task.title || '每日任务',
+    amount: rewardCoins,
+    createdAt: now(),
+  };
+  const nextEarnHistory = rewardCoins ? [entry, ...earnHistory].slice(0, 50) : earnHistory;
+  await updateUserSettings({
+    affection_points: nextAffection,
+    currency_balance: nextBalance,
+    wallet_earn_history: JSON.stringify(nextEarnHistory),
+  });
+  await bumpDailyProgress({ taskCompleted: true });
 
   if (task.target_role_id) {
-    const expDelta = (task.difficulty === 'H' ? 30 : 20) + Math.max(0, task.reward_points || 0);
-    const affectionDelta = task.reward_points || 5;
+    const expDelta = (task.difficulty === 'H' ? 30 : 20) + Math.max(0, rewardPoints);
+    const affectionDelta = rewardPoints;
     try {
       await addRoleProgress(task.target_role_id, { expDelta, affectionDelta });
     } catch (error) {
       console.warn('[DailyTheater] addRoleProgress failed', error);
     }
   }
-  return { ...task, completed: 1, affection_points: nextAffection };
+  return { ...task, completed: 1, affection_points: nextAffection, currency_balance: nextBalance, reward_coins: rewardCoins };
 }
