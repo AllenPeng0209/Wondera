@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -77,7 +77,7 @@ const getBondTitle = (level) => {
   return `眷恋 Lv${level}`;
 };
 
-export default function GrowthScreen({ navigation }) {
+export default function GrowthScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState('role');
   const [activeView, setActiveView] = useState('profile');
@@ -92,6 +92,20 @@ export default function GrowthScreen({ navigation }) {
   const [dailyStats, setDailyStats] = useState(null);
   const [vocabStats, setVocabStats] = useState({ total: 0, mastered: 0, due: 0 });
   const [vocabTimeline, setVocabTimeline] = useState([]);
+
+  useEffect(() => {
+    const targetView = route?.params?.initialView;
+    const targetRoleId = route?.params?.roleId;
+    if (!targetView && !targetRoleId) return;
+    if (targetView && ROLE_VIEWS.some((item) => item.key === targetView)) {
+      setActiveTab('role');
+      setActiveView(targetView);
+    }
+    if (targetRoleId) {
+      setActiveRoleId(targetRoleId);
+    }
+    navigation.setParams({ initialView: undefined, roleId: undefined });
+  }, [route?.params?.initialView, route?.params?.roleId, navigation]);
 
   const load = useCallback(async () => {
     setLoading(true);

@@ -7,6 +7,7 @@ import {
   FlatList,
   Image,
   ImageBackground,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -47,6 +48,73 @@ import { getEmojiSourceByKey } from '../data/emojiAssets';
 import { getRelationshipLabelByAffectionLevel } from '../services/relationship';
 
 const NEGATIVE_CUES = ['讨厌', '滚', '闭嘴', '生气', '气死', '别烦', '不理你', 'hate you', 'stupid', 'idiot', 'angry', 'annoying', 'shut up', 'fuck'];
+const GIFT_OPTIONS = [
+  {
+    id: 'gift-rose',
+    title: '玫瑰',
+    effect: '心动 +3',
+    affection: 3,
+    icon: 'heart',
+    accent: '#f093a4',
+    soft: '#ffe9f0',
+  },
+  {
+    id: 'gift-ticket',
+    title: '电影票',
+    effect: '心动 +8',
+    affection: 8,
+    icon: 'ticket',
+    accent: '#f0a65a',
+    soft: '#fff1de',
+  },
+  {
+    id: 'gift-scarf',
+    title: '围巾',
+    effect: '心动 +15',
+    affection: 15,
+    icon: 'ribbon',
+    accent: '#6fa3e8',
+    soft: '#eaf3ff',
+  },
+  {
+    id: 'gift-ring',
+    title: '誓言戒',
+    effect: '心动 +30',
+    affection: 30,
+    icon: 'diamond',
+    accent: '#9b7ed9',
+    soft: '#f0e9ff',
+  },
+];
+const ACTION_TONES = [
+  { key: 'tender', label: '轻柔', hint: '温柔不冒犯', accent: '#f093a4', soft: '#ffe9f0' },
+  { key: 'playful', label: '俏皮', hint: '甜甜小调皮', accent: '#f0a65a', soft: '#fff1de' },
+  { key: 'warm', label: '安抚', hint: '陪你稳稳的', accent: '#6fa3e8', soft: '#eaf3ff' },
+  { key: 'spark', label: '心动', hint: '暧昧升温', accent: '#9b7ed9', soft: '#f0e9ff' },
+];
+const ACTION_COMMANDS = [
+  { id: 'hug', label: '轻拥入怀', icon: 'heart-outline' },
+  { id: 'headpat', label: '摸摸头发', icon: 'hand-left-outline' },
+  { id: 'lean', label: '让我靠在你肩上', icon: 'happy-outline' },
+  { id: 'walk', label: '牵手散步', icon: 'walk-outline' },
+  { id: 'movie', label: '一起看电影', icon: 'film-outline' },
+  { id: 'whisper', label: '贴近耳语', icon: 'chatbubble-ellipses-outline' },
+  { id: 'scarf', label: '帮我系围巾', icon: 'ribbon-outline' },
+  { id: 'goodnight', label: '送我晚安吻', icon: 'moon-outline' },
+];
+const POLAROID_INTIMACY = [
+  { key: 'soft', label: '微光', hint: '距离刚好', accent: '#f0a65a', soft: '#fff1de' },
+  { key: 'close', label: '心动', hint: '靠近一点', accent: '#f093a4', soft: '#ffe9f0' },
+  { key: 'tease', label: '暧昧', hint: '呼吸很近', accent: '#9b7ed9', soft: '#f0e9ff' },
+];
+const POLAROID_POSES = [
+  { id: 'gaze', label: '对视偷笑', icon: 'eye-outline' },
+  { id: 'touch', label: '指尖相触', icon: 'hand-right-outline' },
+  { id: 'whisper', label: '耳边低语', icon: 'chatbubble-ellipses-outline' },
+  { id: 'scarf', label: '围巾拉近', icon: 'ribbon-outline' },
+  { id: 'walk', label: '并肩漫步', icon: 'walk-outline' },
+  { id: 'movie', label: '同看一幕', icon: 'film-outline' },
+];
 
 function detectNegativeTone(text) {
   if (!text) return 0;
@@ -82,6 +150,118 @@ function parseImageMediaKey(mediaKey) {
   return { uri: trimmed };
 }
 
+function parseGiftMediaKey(mediaKey) {
+  if (!mediaKey || typeof mediaKey !== 'string') return null;
+  const trimmed = mediaKey.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          id: parsed.id || parsed.giftId || null,
+          title: parsed.title || null,
+          effect: parsed.effect || null,
+          affection: typeof parsed.affection === 'number' ? parsed.affection : null,
+          icon: parsed.icon || null,
+          accent: parsed.accent || null,
+          soft: parsed.soft || null,
+        };
+      }
+    } catch {
+      // ignore malformed
+    }
+  }
+  return { title: trimmed };
+}
+
+function parseActionMediaKey(mediaKey) {
+  if (!mediaKey || typeof mediaKey !== 'string') return null;
+  const trimmed = mediaKey.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          toneKey: parsed.toneKey || null,
+          toneLabel: parsed.toneLabel || parsed.tone || null,
+          action: parsed.action || parsed.label || null,
+        };
+      }
+    } catch {
+      // ignore malformed
+    }
+  }
+  return { action: trimmed };
+}
+
+function parsePolaroidMediaKey(mediaKey) {
+  if (!mediaKey || typeof mediaKey !== 'string') return null;
+  const trimmed = mediaKey.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          roleId: parsed.roleId || null,
+          roleName: parsed.roleName || null,
+          userName: parsed.userName || null,
+          toneKey: parsed.toneKey || null,
+          toneLabel: parsed.toneLabel || null,
+          intimacyKey: parsed.intimacyKey || null,
+          intimacyLabel: parsed.intimacyLabel || null,
+          poseLabel: parsed.poseLabel || null,
+          caption: parsed.caption || null,
+          scene: parsed.scene || null,
+          createdAt: parsed.createdAt || null,
+        };
+      }
+    } catch {
+      // ignore malformed
+    }
+  }
+  return { caption: trimmed };
+}
+
+function formatDiaryDayKey(ts) {
+  if (!ts) return '';
+  const date = new Date(ts);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDiaryLabel(dayKey) {
+  if (!dayKey) return '';
+  const [year, month, day] = dayKey.split('-').map((part) => Number(part));
+  if (!year || !month || !day) return dayKey;
+  const today = formatDiaryDayKey(Date.now());
+  if (dayKey === today) return '今天';
+  return `${month}.${day}`;
+}
+
+function formatDiaryTime(ts) {
+  if (!ts) return '';
+  const date = new Date(ts);
+  const hours = `${date.getHours()}`.padStart(2, '0');
+  const minutes = `${date.getMinutes()}`.padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+function getDiaryEntryText(message) {
+  if (!message) return '';
+  const body = (message.body || '').trim();
+  if (message.kind === 'image') return body ? `【照片】${body}` : '【照片】';
+  if (message.kind === 'emoji') return body || '[表情]';
+  if (message.kind === 'gift') return body || '送出了礼物';
+  if (message.kind === 'action') return body || '动作指令';
+  if (message.kind === 'polaroid') return body || '拍立得合影';
+  return body;
+}
+
 export default function ConversationScreen({ navigation, route }) {
   const { conversationId, shouldResendGreeting } = route.params;
   const insets = useSafeAreaInsets();
@@ -113,11 +293,75 @@ export default function ConversationScreen({ navigation, route }) {
   const [roleProgress, setRoleProgress] = useState(null);
   const [progressVisible, setProgressVisible] = useState(false);
   const [dailyStats, setDailyStats] = useState(null);
+  const [quickPanelVisible, setQuickPanelVisible] = useState(false);
+  const [giftSheetVisible, setGiftSheetVisible] = useState(false);
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [actionToneKey, setActionToneKey] = useState(ACTION_TONES[0]?.key || 'tender');
+  const [actionDraft, setActionDraft] = useState('');
+  const [actionSelectedId, setActionSelectedId] = useState(null);
+  const [diarySheetVisible, setDiarySheetVisible] = useState(false);
+  const [diarySelectedDay, setDiarySelectedDay] = useState('');
+  const [diaryShowAll, setDiaryShowAll] = useState(false);
+  const [polaroidVisible, setPolaroidVisible] = useState(false);
+  const [polaroidToneKey, setPolaroidToneKey] = useState(ACTION_TONES[0]?.key || 'tender');
+  const [polaroidIntimacyKey, setPolaroidIntimacyKey] = useState(POLAROID_INTIMACY[1]?.key || 'close');
+  const [polaroidPoseId, setPolaroidPoseId] = useState(POLAROID_POSES[0]?.id || null);
+  const [polaroidCaption, setPolaroidCaption] = useState('');
   const listRef = useRef(null);
+  const inputRef = useRef(null);
   const messagesRef = useRef([]);
   const greetingSentRef = useRef(false);
   const prevIsTypingRef = useRef(false);
   const soundRef = useRef(null);
+
+  const diaryData = useMemo(() => {
+    const allGroups = {};
+    const aiGroups = {};
+    messages.forEach((message) => {
+      const ts = message?.createdAt || message?.created_at;
+      const dayKey = formatDiaryDayKey(ts);
+      if (!dayKey) return;
+      if (!allGroups[dayKey]) allGroups[dayKey] = [];
+      allGroups[dayKey].push(message);
+      if (message?.sender === 'ai') {
+        if (!aiGroups[dayKey]) aiGroups[dayKey] = [];
+        aiGroups[dayKey].push(message);
+      }
+    });
+    const keys = Object.keys(allGroups).sort((a, b) => (a < b ? 1 : -1));
+    return { allGroups, aiGroups, keys };
+  }, [messages]);
+
+  const diaryDayKeys = diaryData.keys;
+  const latestDiaryDay = diaryDayKeys[0] || formatDiaryDayKey(Date.now());
+  const activeDiaryDay = diarySelectedDay || latestDiaryDay;
+  const diaryMessages = useMemo(() => {
+    if (!activeDiaryDay) return [];
+    const groups = diaryShowAll ? diaryData.allGroups : diaryData.aiGroups;
+    const list = groups[activeDiaryDay] || [];
+    return [...list].sort(
+      (a, b) => (a?.createdAt || a?.created_at || 0) - (b?.createdAt || b?.created_at || 0)
+    );
+  }, [diaryData, diaryShowAll, activeDiaryDay]);
+
+  const diarySummary = useMemo(() => {
+    const texts = diaryMessages
+      .map((item) => getDiaryEntryText(item))
+      .filter(Boolean);
+    if (!texts.length) return '';
+    return texts.slice(-3).join(' · ');
+  }, [diaryMessages]);
+
+  useEffect(() => {
+    if (!diarySheetVisible) return;
+    if (!activeDiaryDay && latestDiaryDay) {
+      setDiarySelectedDay(latestDiaryDay);
+      return;
+    }
+    if (activeDiaryDay && !diaryDayKeys.includes(activeDiaryDay) && latestDiaryDay) {
+      setDiarySelectedDay(latestDiaryDay);
+    }
+  }, [diarySheetVisible, activeDiaryDay, latestDiaryDay, diaryDayKeys.join('|')]);
 
   const fetchWordDetails = useCallback(async (word) => {
     if (!word) return;
@@ -394,6 +638,12 @@ export default function ConversationScreen({ navigation, route }) {
       Alert.alert('已拉黑', '你已拉黑 Ta，无法继续对话。');
       return;
     }
+    setQuickPanelVisible(false);
+    setGiftSheetVisible(false);
+    setActionSheetVisible(false);
+    setDiarySheetVisible(false);
+    setActionDraft('');
+    setActionSelectedId(null);
     const content = inputValue.trim();
     setInputValue('');
     const imageAttachment = pendingImage;
@@ -474,6 +724,252 @@ export default function ConversationScreen({ navigation, route }) {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleToggleQuickPanel = () => {
+    setQuickPanelVisible((prev) => {
+      const next = !prev;
+      if (next) {
+        setGiftSheetVisible(false);
+        setActionSheetVisible(false);
+        setDiarySheetVisible(false);
+        Keyboard.dismiss();
+      }
+      return next;
+    });
+  };
+
+  const handleOpenGifts = () => {
+    setQuickPanelVisible(false);
+    setGiftSheetVisible(true);
+    setActionSheetVisible(false);
+    setDiarySheetVisible(false);
+    Keyboard.dismiss();
+  };
+
+  const handleActionCommand = () => {
+    setQuickPanelVisible(false);
+    setGiftSheetVisible(false);
+    setActionSheetVisible(true);
+    setActionDraft('');
+    setActionSelectedId(null);
+    setDiarySheetVisible(false);
+    Keyboard.dismiss();
+  };
+
+  const handleQuickSendPhoto = async () => {
+    setQuickPanelVisible(false);
+    setGiftSheetVisible(false);
+    setActionSheetVisible(false);
+    setDiarySheetVisible(false);
+    await handlePickImage();
+  };
+
+  const handleOpenDiary = () => {
+    setQuickPanelVisible(false);
+    setGiftSheetVisible(false);
+    setActionSheetVisible(false);
+    setDiarySheetVisible(true);
+    setDiaryShowAll(false);
+    setDiarySelectedDay(latestDiaryDay);
+    Keyboard.dismiss();
+  };
+
+  const handleSendGift = async (gift) => {
+    if (!gift || sending) return;
+    if (!conversation || !role) return;
+    if (isBlocked) {
+      Alert.alert('已拉黑', '你已拉黑 Ta，无法继续对话。');
+      return;
+    }
+    setQuickPanelVisible(false);
+    setGiftSheetVisible(false);
+
+    const giftTitle = gift.title || '礼物';
+    const giftEffect = gift.effect || (gift.affection ? `心动 +${gift.affection}` : '');
+    const giftBody = `我送你${giftTitle}${giftEffect ? `（${giftEffect}）` : ''}`;
+    const createdAt = Date.now();
+    const mediaKey = JSON.stringify({
+      id: gift.id || null,
+      title: giftTitle,
+      effect: giftEffect || null,
+      affection: typeof gift.affection === 'number' ? gift.affection : null,
+      icon: gift.icon || null,
+      accent: gift.accent || null,
+      soft: gift.soft || null,
+    });
+
+    let newMessage = null;
+    try {
+      newMessage = await addMessage(conversation.id, 'user', giftBody, createdAt, {
+        kind: 'gift',
+        mediaKey,
+      });
+    } catch (error) {
+      console.warn('[Conversation] 送礼失败', error);
+      Alert.alert('送礼失败', error?.message || '无法发送礼物');
+      return;
+    }
+    const nextHistory = [...messagesRef.current, newMessage];
+    setMessages(nextHistory);
+    messagesRef.current = nextHistory;
+
+    bumpDailyProgress({ messagesDelta: 1 })
+      .then(async (stats) => {
+        setDailyStats(stats);
+        try {
+          const refreshed = await getUserSettings();
+          setUserProfile(refreshed || null);
+        } catch (e) {
+          console.warn('[Conversation] refresh user settings failed', e);
+        }
+      })
+      .catch((error) => console.warn('[Conversation] bumpDailyProgress failed', error));
+
+    let nextAffectionLevel = roleProgress?.affection_level || 1;
+    if (role?.id && typeof gift.affection === 'number' && gift.affection > 0) {
+      try {
+        const progress = await addRoleProgress(role.id, { expDelta: 0, affectionDelta: gift.affection });
+        if (progress) {
+          setRoleProgress(progress);
+          nextAffectionLevel = progress.affection_level || nextAffectionLevel;
+        }
+      } catch (error) {
+        console.warn('[Conversation] addRoleProgress failed', error);
+      }
+    }
+
+    setSending(true);
+    try {
+      const aiResult = await generateAiReply({
+        conversation,
+        role,
+        history: nextHistory,
+        userProfile,
+        affectionLevel: nextAffectionLevel,
+      });
+      await deliverAiChunks(aiResult.text);
+      await maybeSendAutoEmoji(aiResult.text);
+      if (typeof aiResult.nextCursor === 'number') {
+        setConversation((prev) =>
+          prev ? { ...prev, scriptCursor: aiResult.nextCursor } : prev
+        );
+      }
+    } catch (error) {
+      console.error('[Conversation] 送礼回复失败', error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const getActiveTone = () =>
+    ACTION_TONES.find((tone) => tone.key === actionToneKey) || ACTION_TONES[0];
+
+  const resolveActionLabel = () => {
+    if (actionDraft.trim()) return actionDraft.trim();
+    const selected = ACTION_COMMANDS.find((item) => item.id === actionSelectedId);
+    return selected?.label || '';
+  };
+
+  const buildActionCommand = () => {
+    const actionLabel = resolveActionLabel();
+    if (!actionLabel) return '';
+    const tone = getActiveTone();
+    const tonePrefix = tone?.label ? `${tone.label} · ` : '';
+    return `动作指令：${tonePrefix}${actionLabel}`;
+  };
+
+  const handleApplyAction = async (sendNow) => {
+    const commandText = buildActionCommand();
+    if (!commandText) {
+      Alert.alert('还没选动作', '先选一个动作或写一句想要的互动吧。');
+      return;
+    }
+    if (sendNow) {
+      await handleSendAction(commandText);
+      return;
+    }
+    setInputValue((prev) => (prev.trim() ? `${prev}\n${commandText}` : commandText));
+    setActionSheetVisible(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const handleSendAction = async (commandText) => {
+    if (!commandText || sending) return;
+    if (!conversation || !role) return;
+    if (isBlocked) {
+      Alert.alert('已拉黑', '你已拉黑 Ta，无法继续对话。');
+      return;
+    }
+    setQuickPanelVisible(false);
+    setGiftSheetVisible(false);
+    setActionSheetVisible(false);
+
+    const createdAt = Date.now();
+    const tone = getActiveTone();
+    const actionLabel = resolveActionLabel();
+    const mediaKey = JSON.stringify({
+      toneKey: tone?.key || null,
+      toneLabel: tone?.label || null,
+      action: actionLabel || null,
+    });
+
+    let newMessage = null;
+    try {
+      newMessage = await addMessage(conversation.id, 'user', commandText, createdAt, {
+        kind: 'action',
+        mediaKey,
+      });
+    } catch (error) {
+      console.warn('[Conversation] 动作发送失败', error);
+      Alert.alert('发送失败', error?.message || '无法发送动作指令');
+      return;
+    }
+    const nextHistory = [...messagesRef.current, newMessage];
+    setMessages(nextHistory);
+    messagesRef.current = nextHistory;
+
+    bumpDailyProgress({ messagesDelta: 1 })
+      .then(async (stats) => {
+        setDailyStats(stats);
+        try {
+          const refreshed = await getUserSettings();
+          setUserProfile(refreshed || null);
+        } catch (e) {
+          console.warn('[Conversation] refresh user settings failed', e);
+        }
+      })
+      .catch((error) => console.warn('[Conversation] bumpDailyProgress failed', error));
+
+    setSending(true);
+    try {
+      const aiResult = await generateAiReply({
+        conversation,
+        role,
+        history: nextHistory,
+        userProfile,
+        affectionLevel: roleProgress?.affection_level || 1,
+      });
+      await deliverAiChunks(aiResult.text);
+      await maybeSendAutoEmoji(aiResult.text);
+      if (typeof aiResult.nextCursor === 'number') {
+        setConversation((prev) =>
+          prev ? { ...prev, scriptCursor: aiResult.nextCursor } : prev
+        );
+      }
+    } catch (error) {
+      console.error('[Conversation] 动作回复失败', error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleRandomAction = () => {
+    if (!ACTION_COMMANDS.length) return;
+    const randomIndex = Math.floor(Math.random() * ACTION_COMMANDS.length);
+    const picked = ACTION_COMMANDS[randomIndex];
+    setActionSelectedId(picked.id);
+    setActionDraft('');
   };
 
   // Typing indicator bubble component
@@ -718,6 +1214,85 @@ const TypingBubble = () => {
     const isUser = item.sender === 'user';
     const isImage = item.kind === 'image';
     const isEmoji = item.kind === 'emoji' && item.mediaKey;
+    const isGift = item.kind === 'gift';
+    const isAction = item.kind === 'action';
+
+    if (isGift) {
+      const gift = parseGiftMediaKey(item.mediaKey);
+      const preset = gift?.id ? GIFT_OPTIONS.find((option) => option.id === gift.id) : null;
+      const giftTitle = gift?.title || preset?.title || '礼物';
+      const giftEffect =
+        gift?.effect
+        || preset?.effect
+        || (typeof gift?.affection === 'number' ? `心动 +${gift.affection}` : '');
+      const giftIcon = gift?.icon || preset?.icon || 'gift';
+      const giftAccent = gift?.accent || preset?.accent || '#d46b84';
+      const giftSoft = gift?.soft || preset?.soft || '#ffe9f0';
+
+      return (
+        <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
+          {!isUser && <Image source={getRoleImage(role?.id, 'avatar')} style={styles.messageAvatar} />}
+          {isUser && <View style={styles.messageAvatarPlaceholder} />}
+          <View style={styles.messageContent}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onLongPress={(event) => handleMessageLongPress(item, event)}
+              delayLongPress={300}
+              onPress={() => setSelectedWord('')}
+            >
+              <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI, styles.bubbleGift]}>
+                <View style={[styles.giftCard, { backgroundColor: giftSoft }]}>
+                  <View style={[styles.giftIconWrap, { borderColor: `${giftAccent}33`, backgroundColor: `${giftAccent}1A` }]}>
+                    <Ionicons name={giftIcon} size={20} color={giftAccent} />
+                  </View>
+                  <View style={styles.giftTextBlock}>
+                    <Text style={styles.giftTitleText}>{giftTitle}</Text>
+                    {giftEffect ? <Text style={[styles.giftEffectText, { color: giftAccent }]}>{giftEffect}</Text> : null}
+                    <Text style={styles.giftNoteText}>{isUser ? '你送出了礼物' : '收到礼物'}</Text>
+                  </View>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
+    if (isAction) {
+      const actionInfo = parseActionMediaKey(item.mediaKey);
+      const tone = actionInfo?.toneKey
+        ? ACTION_TONES.find((itemTone) => itemTone.key === actionInfo.toneKey)
+        : null;
+      const toneLabel = actionInfo?.toneLabel || tone?.label || '动作';
+      const actionLabel = actionInfo?.action || (item.body || '').replace(/^动作指令：/g, '').trim() || '互动';
+      const accent = tone?.accent || '#f093a4';
+      const soft = tone?.soft || '#ffe9f0';
+
+      return (
+        <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
+          {!isUser && <Image source={getRoleImage(role?.id, 'avatar')} style={styles.messageAvatar} />}
+          {isUser && <View style={styles.messageAvatarPlaceholder} />}
+          <View style={styles.messageContent}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onLongPress={(event) => handleMessageLongPress(item, event)}
+              delayLongPress={300}
+              onPress={() => setSelectedWord('')}
+            >
+              <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI, styles.bubbleAction]}>
+                <View style={[styles.actionCardBubble, { backgroundColor: soft }]}>
+                  <View style={[styles.actionTag, { borderColor: `${accent}33` }]}>
+                    <Ionicons name="sparkles-outline" size={12} color={accent} />
+                    <Text style={[styles.actionTagText, { color: accent }]}>{toneLabel}</Text>
+                  </View>
+                  <Text style={styles.actionBubbleText}>{actionLabel}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
 
     if (isImage) {
       const media = parseImageMediaKey(item.mediaKey);
@@ -900,7 +1475,8 @@ const TypingBubble = () => {
   const listData = isTyping ? [...messages, { type: 'typing', id: 'typing-indicator' }] : messages;
 
   const bottomPadding = Math.max(insets.bottom, 12);
-  const canSend = !!(inputValue.trim() || pendingImage) && !sending;
+  const activeTone = getActiveTone();
+  const actionPreview = buildActionCommand();
   return (
     <ImageBackground source={backgroundImage} style={styles.backgroundImage} imageStyle={styles.backgroundImageStyle}>
       <SafeAreaView style={[styles.container, { paddingTop: topPadding, paddingBottom: bottomPadding }]}>
@@ -988,7 +1564,12 @@ const TypingBubble = () => {
           <View style={styles.inputRow}>
             <TouchableOpacity
               style={styles.inputIcon}
-              onPress={handlePickImage}
+              onPress={() => {
+                setQuickPanelVisible(false);
+                setGiftSheetVisible(false);
+                setActionSheetVisible(false);
+                handlePickImage();
+              }}
               onLongPress={handleTakePhoto}
               delayLongPress={250}
             >
@@ -998,21 +1579,61 @@ const TypingBubble = () => {
               <Ionicons name="happy-outline" size={22} color="#b0b0b0" />
             </TouchableOpacity>
             <TextInput
+              ref={inputRef}
               style={styles.textInput}
               placeholder="输入消息..."
               placeholderTextColor="#b5b5b5"
               value={inputValue}
               onChangeText={setInputValue}
+              onFocus={() => {
+                setQuickPanelVisible(false);
+                setGiftSheetVisible(false);
+                setActionSheetVisible(false);
+              }}
               multiline
+              returnKeyType="send"
+              submitBehavior="submit"
+              blurOnSubmit={false}
+              onSubmitEditing={handleSend}
             />
             <TouchableOpacity
-              style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-              onPress={handleSend}
-              disabled={!canSend}
+              style={[styles.plusButton, quickPanelVisible && styles.plusButtonActive]}
+              onPress={handleToggleQuickPanel}
             >
-              <Ionicons name="paper-plane-outline" size={20} color="#fff" />
+              <Ionicons name={quickPanelVisible ? 'close' : 'add'} size={20} color={quickPanelVisible ? '#fff' : '#9b9b9b'} />
             </TouchableOpacity>
           </View>
+          {quickPanelVisible ? (
+            <View style={styles.quickPanel}>
+              <Text style={styles.quickPanelTitle}>对话打开</Text>
+              <View style={styles.quickActionsRow}>
+                <TouchableOpacity style={styles.quickActionItem} onPress={handleOpenGifts}>
+                  <View style={styles.quickActionIcon}>
+                    <Ionicons name="gift-outline" size={22} color="#555" />
+                  </View>
+                  <Text style={styles.quickActionLabel}>赠送礼物</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickActionItem} onPress={handleActionCommand}>
+                  <View style={styles.quickActionIcon}>
+                    <Ionicons name="flash-outline" size={22} color="#555" />
+                  </View>
+                  <Text style={styles.quickActionLabel}>动作指令</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickActionItem} onPress={handleQuickSendPhoto}>
+                  <View style={styles.quickActionIcon}>
+                    <Ionicons name="image-outline" size={22} color="#555" />
+                  </View>
+                  <Text style={styles.quickActionLabel}>发送照片</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.quickActionItem} onPress={handleOpenDiary}>
+                  <View style={styles.quickActionIcon}>
+                    <Ionicons name="book-outline" size={22} color="#555" />
+                  </View>
+                  <Text style={styles.quickActionLabel}>TA的日记</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
         </KeyboardAvoidingView>
 
         {quotePreview ? (
@@ -1057,6 +1678,266 @@ const TypingBubble = () => {
                   <Text style={[styles.actionMenuText, { color: '#e55b73' }]}>删除</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        )}
+
+        {giftSheetVisible && (
+          <View style={styles.giftSheetOverlay} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.giftSheetBackdrop}
+              activeOpacity={1}
+              onPress={() => setGiftSheetVisible(false)}
+            />
+            <View style={[styles.giftSheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+              <View style={styles.giftSheetHeader}>
+                <Text style={styles.giftSheetTitle}>送给 TA 一份礼物</Text>
+                <TouchableOpacity onPress={() => setGiftSheetVisible(false)}>
+                  <Ionicons name="close" size={22} color="#555" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.giftSheetGrid}>
+                {GIFT_OPTIONS.map((gift) => (
+                  <TouchableOpacity
+                    key={gift.id}
+                    style={[
+                      styles.giftSheetCard,
+                      { backgroundColor: gift.soft },
+                      sending && styles.giftSheetCardDisabled,
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => handleSendGift(gift)}
+                    disabled={sending}
+                  >
+                    <View
+                      style={[
+                        styles.giftSheetIcon,
+                        { borderColor: `${gift.accent}33`, backgroundColor: `${gift.accent}1A` },
+                      ]}
+                    >
+                      <Ionicons name={gift.icon} size={20} color={gift.accent} />
+                    </View>
+                    <Text style={styles.giftSheetName}>{gift.title}</Text>
+                    <Text style={[styles.giftSheetEffect, { color: gift.accent }]}>{gift.effect}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.giftSheetFooter}>
+                <Text style={styles.giftSheetHint}>送礼会增加亲密度，并触发 TA 的回复。</Text>
+                <TouchableOpacity
+                  style={styles.giftSheetLink}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setGiftSheetVisible(false);
+                    navigation.navigate('MallSpace');
+                  }}
+                >
+                  <Text style={styles.giftSheetLinkText}>去礼物商城</Text>
+                  <Ionicons name="chevron-forward" size={14} color="#999" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {actionSheetVisible && (
+          <View style={styles.actionSheetOverlay} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.actionSheetBackdrop}
+              activeOpacity={1}
+              onPress={() => setActionSheetVisible(false)}
+            />
+            <View style={[styles.actionSheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+              <View style={styles.actionSheetHeader}>
+                <View>
+                  <Text style={styles.actionSheetTitle}>动作指令</Text>
+                  <Text style={styles.actionSheetSubtitle}>选一个氛围 + 动作，让 TA 立刻回应。</Text>
+                </View>
+                <TouchableOpacity onPress={() => setActionSheetVisible(false)}>
+                  <Ionicons name="close" size={22} color="#555" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.actionToneRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {ACTION_TONES.map((tone) => {
+                    const isActive = tone.key === actionToneKey;
+                    return (
+                      <TouchableOpacity
+                        key={tone.key}
+                        style={[
+                          styles.actionToneChip,
+                          isActive && { backgroundColor: tone.soft, borderColor: tone.accent },
+                        ]}
+                        onPress={() => setActionToneKey(tone.key)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.actionToneText, isActive && { color: tone.accent }]}>
+                          {tone.label}
+                        </Text>
+                        <Text style={styles.actionToneHint}>{tone.hint}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity style={styles.actionRandomButton} onPress={handleRandomAction} activeOpacity={0.85}>
+                  <Ionicons name="sparkles-outline" size={14} color="#f093a4" />
+                  <Text style={styles.actionRandomText}>随机灵感</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.actionGrid}>
+                {ACTION_COMMANDS.map((item) => {
+                  const isSelected = actionSelectedId === item.id;
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[
+                        styles.actionCard,
+                        isSelected && { borderColor: activeTone?.accent || '#f093a4' },
+                      ]}
+                      onPress={() => {
+                        setActionSelectedId(item.id);
+                        setActionDraft('');
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <View
+                        style={[
+                          styles.actionCardIcon,
+                          { backgroundColor: activeTone?.soft || '#ffe9f0' },
+                        ]}
+                      >
+                        <Ionicons name={item.icon} size={18} color={activeTone?.accent || '#f093a4'} />
+                      </View>
+                      <Text style={styles.actionCardText}>{item.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.actionCustomRow}>
+                <Ionicons name="create-outline" size={16} color="#9a9a9a" />
+                <TextInput
+                  style={styles.actionCustomInput}
+                  placeholder="自定义动作：比如『抱紧一点』"
+                  placeholderTextColor="#b5b5b5"
+                  value={actionDraft}
+                  onChangeText={setActionDraft}
+                />
+              </View>
+
+              <View style={styles.actionPreviewBox}>
+                <Text style={styles.actionPreviewLabel}>预览</Text>
+                <Text style={styles.actionPreviewText}>{actionPreview || '选一个动作或写一句话～'}</Text>
+              </View>
+
+              <View style={styles.actionButtonRow}>
+                <TouchableOpacity style={styles.actionButtonGhost} onPress={() => handleApplyAction(false)}>
+                  <Text style={styles.actionButtonGhostText}>放入输入框</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionButtonPrimary} onPress={() => handleApplyAction(true)}>
+                  <Text style={styles.actionButtonPrimaryText}>一键发送</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {diarySheetVisible && (
+          <View style={styles.diarySheetOverlay} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.diarySheetBackdrop}
+              activeOpacity={1}
+              onPress={() => setDiarySheetVisible(false)}
+            />
+            <View style={[styles.diarySheet, { maxHeight: sheetMaxHeight }]}>
+              <View style={styles.diaryHeader}>
+                <View>
+                  <Text style={styles.diaryTitle}>{role?.name || 'TA'} 的日记</Text>
+                  <Text style={styles.diarySubtitle}>记录来自真实对话</Text>
+                </View>
+                <TouchableOpacity onPress={() => setDiarySheetVisible(false)}>
+                  <Ionicons name="close" size={22} color="#555" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.diaryToggleRow}>
+                <TouchableOpacity
+                  style={[styles.diaryToggle, !diaryShowAll && styles.diaryToggleActive]}
+                  onPress={() => setDiaryShowAll(false)}
+                >
+                  <Text style={[styles.diaryToggleText, !diaryShowAll && styles.diaryToggleTextActive]}>
+                    只看 TA
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.diaryToggle, diaryShowAll && styles.diaryToggleActive]}
+                  onPress={() => setDiaryShowAll(true)}
+                >
+                  <Text style={[styles.diaryToggleText, diaryShowAll && styles.diaryToggleTextActive]}>
+                    全部对话
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.diaryDateRow}
+              >
+                {(diaryDayKeys.length ? diaryDayKeys : [latestDiaryDay]).map((key) => {
+                  const isActive = key === activeDiaryDay;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.diaryDateChip, isActive && styles.diaryDateChipActive]}
+                      onPress={() => setDiarySelectedDay(key)}
+                    >
+                      <Text style={[styles.diaryDateText, isActive && styles.diaryDateTextActive]}>
+                        {formatDiaryLabel(key)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={styles.diarySummaryCard}>
+                <Text style={styles.diarySummaryLabel}>今日回声</Text>
+                <Text style={styles.diarySummaryText}>
+                  {diarySummary || '今天还没有留下新的记录。'}
+                </Text>
+              </View>
+
+              <ScrollView
+                style={styles.diaryEntries}
+                contentContainerStyle={[
+                  styles.diaryEntriesContent,
+                  { paddingBottom: Math.max(insets.bottom, 12) },
+                ]}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+              >
+                {diaryMessages.length ? (
+                  diaryMessages.map((item) => {
+                    const entryText = getDiaryEntryText(item);
+                    if (!entryText) return null;
+                    const entryTime = item.createdAt || item.created_at;
+                    const entryKey = item.id?.toString() || `${entryTime || Math.random()}`;
+                    return (
+                      <View style={styles.diaryEntry} key={entryKey}>
+                        <Text style={styles.diaryEntryTime}>{formatDiaryTime(entryTime)}</Text>
+                        <Text style={styles.diaryEntryText}>{entryText}</Text>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={styles.diaryEmpty}>
+                    <Ionicons name="book-outline" size={24} color="#c9c9c9" />
+                    <Text style={styles.diaryEmptyText}>今天还没写日记</Text>
+                  </View>
+                )}
+              </ScrollView>
             </View>
           </View>
         )}
@@ -1402,6 +2283,73 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 6,
   },
+  bubbleGift: {
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
+  bubbleAction: {
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
+  giftCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  giftIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  giftTextBlock: {
+    marginLeft: 10,
+  },
+  giftTitleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3a2a30',
+  },
+  giftEffectText: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  giftNoteText: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#8a7d82',
+  },
+  actionCardBubble: {
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  actionTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+  },
+  actionTagText: {
+    marginLeft: 4,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  actionBubbleText: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3a2a30',
+  },
   emojiImage: {
     width: 160,
     height: 160,
@@ -1518,17 +2466,451 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlignVertical: 'center',
   },
-  sendButton: {
+  plusButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#f093a4',
+    backgroundColor: '#f3f3f3',
+    borderWidth: 1,
+    borderColor: '#e4e4e4',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
   },
-  sendButtonDisabled: {
-    opacity: 0.6,
+  plusButtonActive: {
+    backgroundColor: '#f093a4',
+    borderColor: '#f093a4',
+  },
+  quickPanel: {
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+  },
+  quickPanelTitle: {
+    fontSize: 12,
+    color: '#9a9a9a',
+    marginBottom: 10,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  quickActionItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  quickActionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#f2f2f2',
+    borderWidth: 1,
+    borderColor: '#e6e6e6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  quickActionLabel: {
+    fontSize: 12,
+    color: '#3a3a3a',
+  },
+  giftSheetOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+  },
+  giftSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+  },
+  giftSheet: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+  },
+  giftSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  giftSheetTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  giftSheetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  giftSheetCard: {
+    width: '48%',
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.04)',
+  },
+  giftSheetCardDisabled: {
+    opacity: 0.5,
+  },
+  giftSheetIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  giftSheetName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+  giftSheetEffect: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  giftSheetFooter: {
+    marginTop: 2,
+  },
+  giftSheetHint: {
+    fontSize: 12,
+    color: '#8a8a8a',
+  },
+  giftSheetLink: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  giftSheetLinkText: {
+    fontSize: 12,
+    color: '#9b9b9b',
+    marginRight: 4,
+  },
+  actionSheetOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+  },
+  actionSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.28)',
+  },
+  actionSheet: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+  },
+  actionSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  actionSheetTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  actionSheetSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#8f8f8f',
+  },
+  actionToneRow: {
+    marginTop: 14,
+    marginBottom: 12,
+  },
+  actionToneChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e9e9e9',
+    backgroundColor: '#fafafa',
+    marginRight: 8,
+  },
+  actionToneText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#444',
+  },
+  actionToneHint: {
+    marginTop: 2,
+    fontSize: 10,
+    color: '#a0a0a0',
+  },
+  actionRandomButton: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: '#fff3f6',
+  },
+  actionRandomText: {
+    marginLeft: 4,
+    fontSize: 12,
+    color: '#f093a4',
+    fontWeight: '600',
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  actionCard: {
+    width: '48%',
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#ececec',
+    backgroundColor: '#fff',
+    marginBottom: 10,
+  },
+  actionCardIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  actionCardText: {
+    fontSize: 12,
+    color: '#333',
+    fontWeight: '600',
+  },
+  actionCustomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ededed',
+    backgroundColor: '#fafafa',
+    marginTop: 4,
+  },
+  actionCustomInput: {
+    flex: 1,
+    marginLeft: 6,
+    fontSize: 12,
+    color: '#333',
+    paddingVertical: 4,
+  },
+  actionPreviewBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#f2f2f2',
+    backgroundColor: '#fff',
+  },
+  actionPreviewLabel: {
+    fontSize: 11,
+    color: '#9a9a9a',
+    marginBottom: 4,
+  },
+  actionPreviewText: {
+    fontSize: 13,
+    color: '#333',
+    lineHeight: 18,
+  },
+  actionButtonRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+  },
+  actionButtonGhost: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  actionButtonGhostText: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '600',
+  },
+  actionButtonPrimary: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: '#f093a4',
+    alignItems: 'center',
+  },
+  actionButtonPrimaryText: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  diarySheetOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+  },
+  diarySheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.28)',
+  },
+  diarySheet: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+  },
+  diaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  diaryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  diarySubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#9a9a9a',
+  },
+  diaryToggleRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  diaryToggle: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+    backgroundColor: '#fafafa',
+    marginRight: 8,
+  },
+  diaryToggleActive: {
+    borderColor: '#f093a4',
+    backgroundColor: '#ffe9f0',
+  },
+  diaryToggleText: {
+    fontSize: 12,
+    color: '#7a7a7a',
+  },
+  diaryToggleTextActive: {
+    color: '#d46b84',
+    fontWeight: '600',
+  },
+  diaryDateRow: {
+    paddingBottom: 8,
+  },
+  diaryDateChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ededed',
+    backgroundColor: '#fff',
+    marginRight: 8,
+  },
+  diaryDateChipActive: {
+    borderColor: '#f093a4',
+    backgroundColor: '#ffe9f0',
+  },
+  diaryDateText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  diaryDateTextActive: {
+    color: '#d46b84',
+    fontWeight: '600',
+  },
+  diarySummaryCard: {
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#f2f2f2',
+    backgroundColor: '#fff',
+    marginBottom: 10,
+  },
+  diarySummaryLabel: {
+    fontSize: 11,
+    color: '#9a9a9a',
+    marginBottom: 6,
+  },
+  diarySummaryText: {
+    fontSize: 13,
+    color: '#333',
+    lineHeight: 18,
+  },
+  diaryEntries: {
+    maxHeight: 260,
+  },
+  diaryEntriesContent: {
+    paddingBottom: 6,
+  },
+  diaryEntry: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f2f2f2',
+  },
+  diaryEntryTime: {
+    fontSize: 11,
+    color: '#b0b0b0',
+    marginBottom: 4,
+  },
+  diaryEntryText: {
+    fontSize: 13,
+    color: '#333',
+    lineHeight: 18,
+  },
+  diaryEmpty: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  diaryEmptyText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#b0b0b0',
   },
   imageViewerOverlay: {
     flex: 1,
