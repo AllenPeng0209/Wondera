@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
@@ -18,7 +18,7 @@ import { ArrowLeft, Eye, Loader2, Save, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-const STATUS_OPTIONS: RoleStatus[] = ["宸茬櫦浣?", "鑽夌", "鍙洖婊?"];
+const STATUS_OPTIONS: RoleStatus[] = ["已發佈", "草稿", "可回滾"];
 
 const defaultImagePrompt = (name?: string) => `帥氣正面男生肖像，高清寫實，電影感柔光，${name ?? "角色"}的臉部清晰。`;
 const defaultVideoPrompt =
@@ -102,8 +102,8 @@ export default function RoleDetailPage() {
   }, [baseImageUrl, faceModelUrl]);
 
   const statusTone = (status?: RoleStatus | string): BadgeTone => {
-    if (status === "宸茬櫦浣?") return "accent";
-    if (status === "鑽夌") return "amber";
+    if (status === "已發佈") return "accent";
+    if (status === "草稿") return "amber";
     return "danger";
   };
 
@@ -112,7 +112,7 @@ export default function RoleDetailPage() {
     setSaving(true);
     const tags = parseList(tagsInput);
     const nextRole = { ...role, tags, assets: parseList(assetsInput) };
-    const statusMap: Record<string, string> = { "宸茬櫦浣?": "published", "鑽夌": "draft", "鍙洖婊?": "draft" };
+    const statusMap: Record<string, string> = { "已發佈": "published", "草稿": "draft", "可回滾": "draft" };
     const payload: RoleUpdatePayload = {
       name: nextRole.name,
       avatar_url: nextRole.avatar || undefined,
