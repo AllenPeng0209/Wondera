@@ -1,13 +1,13 @@
 # 语言恋爱 + AI 恋爱游戏路线图与现状盘点（V0.1）
 
-## 当前实现快照（基于 frontend/mobile 源码）
+## 当前实现快照（基于 apps/mobile 源码）
 - 客户端：React Native + Expo，三栏导航（消息/发现/我的）。
 - 本地数据：SQLite（expo-sqlite），表有 roles/conversations/messages/user_settings/role_settings/liked_roles；支持角色创建、对话历史、消息删除。
 - AI 回复：接入百炼 Qwen 文本对话（generateAiReply），无学习纠错/评分逻辑；脚本 fallback；历史截断（12 条）。
 - 触达：后台“拍一拍”任务（expo-background-fetch + local notification），按时间间隔给出 AI 主动消息；首启注册通知权限。
 - TTS：Qwen TTS HTTP 接口封装（synthesizeQwenTts）；前端音频存储字段已预留（audio_url/mime/duration）。
 - UI 模块：角色发现卡片、角色创建、角色偏好/屏蔽、聊天偏好（气泡、沉浸模式、滑动回复等待）、API 设置（自填 key）、钱包（本地余额充值）等。
-- 后端：`backend/` 为空；当前仅客户端调用 LLM/TTS，无服务端评分/同步层。
+- 后端：`services/backend/` 已接入 FastAPI + Supabase（角色/探索/任务管理），其余业务仍以客户端本地为主。
 
 ## PRD 功能覆盖差距
 | 模块 | PRD 目标 | 当前实现 | 缺口/动作 |

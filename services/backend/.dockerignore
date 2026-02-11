@@ -1,0 +1,16 @@
+# 不要打包進映像
+.env
+.env.*
+!.env.example
+__pycache__
+*.py[cod]
+*.pyo
+.pytest_cache
+.venv
+venv
+.git
+.gitignore
+*.md
+Dockerfile
+docker-compose*.yml
+.dockerignore

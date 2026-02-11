@@ -1,0 +1,19 @@
+# 本地開發 / 單機部署用
+# 使用方式：在 services/backend 目錄下執行 docker compose up -d
+services:
+  backend:
+    build: .
+    image: wondera-backend:latest
+    container_name: wondera-backend
+    ports:
+      - "8000:8000"
+    env_file: .env
+    # 明確傳入 Supabase 變數，確保容器能讀到（Compose 會從 .env 替換 ${...}）
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:8000}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-change_me}
+      - SUPABASE_STORAGE_BUCKET=${SUPABASE_STORAGE_BUCKET:-wondera-assets}
+    restart: unless-stopped

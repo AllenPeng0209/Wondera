@@ -1,0 +1,116 @@
+[
+  {
+    "id": "post-london-walk",
+    "type": "post",
+    "post_type": "route",
+    "title": "Half-day London walk",
+    "summary": "A gentle route along the river and small cafes.",
+    "location": "London",
+    "tags": ["walk", "river", "winter"],
+    "author_name": "Mori",
+    "author_label": "Mood travel notes",
+    "author_avatar_url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80",
+    "images": [
+      "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80"
+    ],
+    "cover_height": 230,
+    "stats": {"likes": 2380, "collects": 186, "comments": 42},
+    "content": [
+      "Start from the riverside and stroll at your own pace.",
+      "Stop by an old bookstore and write a note.",
+      "End at a cozy cafe before dusk."
+    ]
+  },
+  {
+    "id": "post-night-market",
+    "type": "post",
+    "post_type": "style",
+    "title": "Night market outfit checklist",
+    "summary": "Bright jacket, comfy shoes, and light layers.",
+    "location": "Taipei",
+    "tags": ["night", "style", "date"],
+    "author_name": "Rika",
+    "author_label": "Daily outfit",
+    "author_avatar_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=120&q=80",
+    "images": [
+      "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80"
+    ],
+    "cover_height": 200,
+    "stats": {"likes": 1650, "collects": 92, "comments": 18},
+    "content": [
+      "Keep it breathable and walkable.",
+      "A soft accent color makes photos pop."
+    ]
+  },
+  {
+    "id": "world-london-tower",
+    "type": "world",
+    "world_type": "cloud journey",
+    "title": "Tower Bridge - Morning light",
+    "summary": "A calm route with city sunrise.",
+    "location": "London",
+    "tags": ["history", "river", "city"],
+    "author_name": "Guide",
+    "author_label": "City walks",
+    "author_avatar_url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80",
+    "images": [
+      "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80"
+    ],
+    "cover_height": 260,
+    "stats": {"views": 12400, "likes": 2100},
+    "target_role_id": "edward",
+    "recommended_roles": ["edward", "kieran", "antoine"],
+    "world": {
+      "infoTitle": "Scene info",
+      "infoBody": "A classic riverside landmark with a soft morning glow.",
+      "infoTags": ["outdoor", "river", "morning"],
+      "routeSteps": [
+        {
+          "title": "Bridge view",
+          "subtitle": "Steel and stone textures",
+          "image": "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80"
+        },
+        {
+          "title": "Riverside path",
+          "subtitle": "Walk and chat",
+          "image": "https://images.unsplash.com/photo-1473959383414-bddf002a13b4?auto=format&fit=crop&w=900&q=80"
+        }
+      ],
+      "interactionTags": ["tap to trigger bells", "swipe to open chat"],
+      "actionLabel": "Enter journey"
+    }
+  },
+  {
+    "id": "world-venice",
+    "type": "world",
+    "world_type": "cloud journey",
+    "title": "Venice - Night canal",
+    "summary": "Soft reflections and a quiet breeze.",
+    "location": "Venice",
+    "tags": ["night", "canal", "romance"],
+    "author_name": "Night guide",
+    "author_label": "Cloud travel",
+    "author_avatar_url": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80",
+    "images": [
+      "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=900&q=80"
+    ],
+    "cover_height": 240,
+    "stats": {"views": 10400, "likes": 2480},
+    "target_role_id": "kieran",
+    "recommended_roles": ["kieran", "edward", "antoine"],
+    "world": {
+      "infoTitle": "Scene info",
+      "infoBody": "Night canal with calm reflections and light wind.",
+      "infoTags": ["night", "water", "quiet"],
+      "routeSteps": [
+        {
+          "title": "Bridge overlook",
+          "subtitle": "City lights",
+          "image": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=900&q=80"
+        }
+      ],
+      "interactionTags": ["tap to trigger boat sound", "long press to save note"],
+      "actionLabel": "Enter journey"
+    }
+  }
+]
